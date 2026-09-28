@@ -13,9 +13,16 @@
  * Submitting records no vote. Gerrit merges what its rules say has been approved,
  * and refuses a change they do not, so the ability to submit is the ability to
  * ask a server that will refuse.
+ *
+ * A change that has already merged is refused too, with the same HTTP 409, and
+ * that one is not a failure: what the caller asked for is already true. So only
+ * after a refusal is the change read back, and a change the server reports as
+ * MERGED is answered as a submit that had nothing to do. Reading after the
+ * refusal rather than before keeps the happy path to one request and still sees
+ * a change someone else merged in between.
  */
 
-import { restSubmit } from './rest.js';
+import { restGetJson, restSubmit } from './rest.js';
 
 /**
  * @typedef {Object} Submitted
@@ -26,6 +33,7 @@ import { restSubmit } from './rest.js';
  * @property {string|null} topic
  * @property {string|null} subject
  * @property {string} status   as the server reported it, normally MERGED
+ * @property {boolean} alreadyMerged  it had merged before this submit, which changed nothing
  */
 
 /**
@@ -40,7 +48,20 @@ import { restSubmit } from './rest.js';
 export async function submitChange(session, change) {
   const target = await session.restTarget();
   /** @type {any} */
-  const info = await restSubmit(target, change);
+  let info;
+  let alreadyMerged = false;
+  try {
+    info = await restSubmit(target, change);
+  } catch (err) {
+    if (/** @type {any} */ (err)?.code !== 'SUBMIT_REFUSED') throw err;
+    /** @type {any} */
+    const current = await restGetJson(target, `/a/changes/${encodeURIComponent(String(change))}`)
+      .catch(() => null);
+    // Any other state, or a read that failed, leaves the refusal standing.
+    if (current?.status !== 'MERGED') throw err;
+    info = current;
+    alreadyMerged = true;
+  }
   const number = Number(info?._number);
   return {
     number: Number.isFinite(number) ? number : Number(change),
@@ -50,5 +71,6 @@ export async function submitChange(session, change) {
     topic: info?.topic ?? null,
     subject: info?.subject ?? null,
     status: String(info?.status ?? 'UNKNOWN'),
+    alreadyMerged,
   };
 }

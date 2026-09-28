@@ -2,7 +2,8 @@
 
 /**
  * The vote ban, at runtime. Every agent-tier operation -- both publish shapes,
- * submit, message, and the reads -- is driven end to end through a fake runner
+ * submit (including a repeat on a change that has merged, which reads the change
+ * back), message, and the reads -- is driven end to end through a fake runner
  * and a fake fetch, and every subprocess call and HTTP request it makes is
  * checked for a way to vote. The message operation is the one that runs the
  * command that can vote, so its argv is pinned element by element: the text it
@@ -92,6 +93,12 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   const fetchRoutes = [
     { path: /\/changes\/200103\/comments$/, body: fixture('comments-stack.txt') },
     { path: /\/comments$/, body: emptyComments },
+    // A second submit of a merged change: refused, then read back.
+    { path: '/a/changes/200102/submit', status: 409, body: 'change is merged\n' },
+    {
+      path: '/a/changes/200102',
+      body: ")]}'\n" + JSON.stringify({ _number: 200102, project: 'acme/apps/widget-console', status: 'MERGED' }),
+    },
     {
       path: '/a/changes/200101/submit',
       body: ")]}'\n" + JSON.stringify({
@@ -109,10 +116,12 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
     { argv: ['publish', '--stack', '--topic', 'stack-of-three'], log: stackLog, head: c },
     { argv: ['publish', '--squash'], log: squashLog, head: b },
     { argv: ['submit', '200101'], log: '', head: c },
+    { argv: ['submit', '200102'], log: '', head: c },
     { argv: ['message', '200101'], log: '', head: c, stdin: hostile },
     { argv: [], log: '', head: c },
     { argv: ['dashboard', '--ambient'], log: '', head: c },
     { argv: ['status'], log: '', head: c },
+    { argv: ['status', 'mine', '--fields', 'all'], log: '', head: c },
     { argv: ['show', '200101', '200102', '200103', '--comments'], log: '', head: c },
     { argv: ['comments', '200102', '200103'], log: '', head: c },
     { argv: ['auth', 'status'], log: '', head: c },
@@ -152,6 +161,9 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   // The writes did happen, so the checks below are about real traffic.
   assert.ok(processes.some((p) => p.file === 'git' && p.args.includes('push')), 'no push was made');
   assert.ok(requests.some((r) => r.method === 'POST'), 'no submit was made');
+  // The already-merged submit reads the change back, and that read is a GET.
+  assert.deepEqual(requests.filter((r) => r.op === 'submit 200102').map((r) => `${r.method} ${r.path}`),
+    ['POST /a/changes/200102/submit', 'GET /a/changes/200102']);
   const posts = processes.filter((p) => p.file === 'ssh' && p.args.includes('review'));
   assert.equal(posts.length, 1, 'the message was posted exactly once');
 

@@ -7,6 +7,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/). Each release's section
 here is its GitHub Release notes, above the list of pull requests it merged.
 
+## [0.4.0]
+
+### Changed
+
+- `gerrit-axi status` rows carry only `change`, `subject`, `status` and `submit`,
+  with no `labels` or `votes` table. `--fields <a,b>` adds any column `show`
+  carries, `labels` or `votes` for that table, or `all` for the 0.3.0 shape; an
+  unknown name is refused with the ones there are.
+
+### Added
+
+- A bare `gerrit-axi`, and `gerrit-axi dashboard`, open with the `bin` and
+  `description` the ambient view already printed.
+
+### Fixed
+
+- `gerrit-axi submit` on a change that has already merged succeeds with
+  `already_merged: true` and exit 0, instead of `SUBMIT_REFUSED` and exit 5. A
+  genuine refusal is still `SUBMIT_REFUSED`.
+
 ## [0.3.0]
 
 ### Added
@@ -60,5 +80,6 @@ here is its GitHub Release notes, above the list of pull requests it merged.
 - A user or host beginning with `-`, from any source including the `origin`
   remote, is refused rather than passed to ssh, which would read it as an option.
 
+[0.4.0]: https://github.com/slnkjthien/gerrit-axi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/slnkjthien/gerrit-axi/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/slnkjthien/gerrit-axi/releases/tag/v0.2.0

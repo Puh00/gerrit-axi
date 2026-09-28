@@ -485,6 +485,28 @@ test('setup config where no host resolves points at a Gerrit checkout, not at --
   }
 });
 
+test('the bare home view opens with the bin and description the ambient view prints', async () => {
+  const { exec, env, cleanup } = tempHome();
+  try {
+    const home = await run(['--json'], { env, exec });
+    assert.equal(home.code, EXIT.ok, home.out);
+    const view = JSON.parse(home.out);
+    assert.deepEqual(Object.keys(view).slice(0, 4), ['ok', 'op', 'bin', 'description']);
+    assert.equal(view.op, 'dashboard');
+    assert.equal(view.bin, '~/install/bin/gerrit-axi.js');
+
+    const ambient = JSON.parse((await run(['dashboard', '--ambient', '--json'], { env, exec })).out);
+    assert.deepEqual({ bin: view.bin, description: view.description },
+      { bin: ambient.bin, description: ambient.description });
+
+    // TOON, the default, names the tool before the live data.
+    const toon = await run([], { env, exec });
+    assert.match(toon.out, /^ok: true\nop: dashboard\nbin: ~\/install\/bin\/gerrit-axi\.js\ndescription: /);
+  } finally {
+    cleanup();
+  }
+});
+
 test('the ambient view in a Gerrit checkout is counts and next steps, never rows', async () => {
   const { exec, env, cleanup } = tempHome();
   try {

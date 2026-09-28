@@ -422,7 +422,7 @@ test('a misspelt option is pointed at the nearest one', async () => {
   const global = await run(['status', '--jsno']);
   assert.equal(global.code, EXIT.usage);
   assert.match(global.out, /^error: "unknown option for status: --jsno"$/m);
-  assert.match(global.out, /^remedy: "Did you mean --json\? Options for status: --query, --limit\. /m);
+  assert.match(global.out, /^remedy: "Did you mean --json\? Options for status: --query, --limit, --fields\. /m);
 
   // Nothing close enough is named as a guess.
   const far = await run(['show', '200101', '--zzzzzz', '--json']);
@@ -537,13 +537,91 @@ test('an empty result set keeps the shape rather than printing nothing', async (
     count: 0,
     more: false,
     changes: [],
-    labels: [],
-    votes: [],
     // An empty attention set says where else to look; test/hints.test.js holds
     // the hint states.
     help: document.help,
   });
   assert.equal(document.help.length, 2);
+
+  // A table asked for by --fields is there, empty, just the same.
+  const asked = captureStream();
+  await main(['status', '--fields', 'labels,votes', '--json'], {
+    cwd: '/some/checkout',
+    env: ENV,
+    stdout: asked.stream,
+    stderr: captureStream().stream,
+    runner: fakeRunner([
+      { match: (f, a) => f === 'git' && a.includes('remote'), result: { stdout: REMOTE } },
+      { match: (f) => f === 'ssh', result: { stdout: stats } },
+    ]),
+  });
+  const withTables = JSON.parse(asked.text);
+  assert.deepEqual(withTables.labels, []);
+  assert.deepEqual(withTables.votes, []);
+});
+
+test('a status row is the few columns that pick a change, with no per-label tables', async () => {
+  const { code, out } = await run(['status', 'mine', '--json']);
+  assert.equal(code, EXIT.ok);
+  const document = JSON.parse(out);
+  assert.deepEqual(Object.keys(document), ['ok', 'op', 'count', 'more', 'changes', 'help']);
+  assert.deepEqual(document.changes, [
+    { change: 200103, subject: 'Wire the retry ceiling to the managed configuration', status: 'NEW', submit: 'NOT_READY' },
+    { change: 200102, subject: 'Give the queue reader its own retry ceiling', status: 'NEW', submit: 'NOT_READY' },
+    { change: 200101, subject: 'Split the queue reader out of the daemon', status: 'NEW', submit: 'OK' },
+  ]);
+  // The hints read the whole row, so the submittable change is still named.
+  assert.ok(document.help.includes(
+    'Run `gerrit-axi submit <change>` for a change the server marks submittable: 200101'));
+});
+
+test('status --fields adds columns in the row\'s own order, and tables by name', async () => {
+  const { code, out } = await run(['status', 'mine', '--fields', 'url,owner,labels', '--json']);
+  assert.equal(code, EXIT.ok);
+  const document = JSON.parse(out);
+  assert.deepEqual(Object.keys(document), ['ok', 'op', 'count', 'more', 'changes', 'labels', 'help']);
+  assert.deepEqual(Object.keys(document.changes[0]), ['change', 'subject', 'owner', 'status', 'submit', 'url'],
+    'the header follows the row, not the order the caller named the fields in');
+  assert.equal(document.changes[0].owner, 'ada');
+  assert.deepEqual(document.labels.filter((row) => row.change === 200102).map((row) => [row.label, row.status]), [
+    ['Quokka-Review', 'OK'],
+    ['Xylophone-Gate', 'NEED'],
+    ['Zebu-Herding', 'NEED'],
+  ]);
+
+  // TOON declares the same header.
+  const toon = await run(['status', 'mine', '--fields', 'owner']);
+  assert.match(toon.out, /^changes\[3\]\{change,subject,owner,status,submit\}:$/m);
+  assert.equal(/^labels\[/m.test(toon.out), false);
+});
+
+test('status --fields all is the whole record: every column of show, and its labels and votes', async () => {
+  const listed = JSON.parse((await run(['status', '200101', '200102', '200103', '--fields', 'all', '--json'])).out);
+  const shown = JSON.parse((await run(['show', '200101', '200102', '200103', '--json'])).out);
+  assert.deepEqual(Object.keys(listed.changes[0]), [
+    'change', 'subject', 'project', 'branch', 'topic', 'owner', 'status', 'wip', 'submit',
+    'submittable', 'blocked_on', 'patch_set', 'revision', 'ref', 'updated', 'created', 'url',
+  ]);
+  const byNumber = (/** @type {any[]} */ rows) => [...rows].sort((a, b) => a.change - b.change);
+  assert.deepEqual(byNumber(listed.changes), byNumber(shown.changes));
+  assert.deepEqual(listed.labels.length, shown.labels.length);
+  assert.deepEqual(listed.votes.length, shown.votes.length);
+});
+
+test('an unknown status field is refused before the server is asked, with the fields there are', async () => {
+  const typo = await run(['status', '--fields', 'ownr', '--json']);
+  assert.equal(typo.code, EXIT.usage);
+  const record = JSON.parse(typo.out);
+  assert.deepEqual({ ok: record.ok, code: record.code, error: record.error },
+    { ok: false, code: 'BAD_USAGE', error: 'unknown field for status: ownr' });
+  assert.match(record.remedy, /^Did you mean owner\? Fields: change, subject, project, /);
+  assert.match(record.remedy, /labels, votes, all\.$/);
+  assert.equal(typo.runner.calls.filter((c) => c.file === 'ssh').length, 0, 'no query was sent');
+
+  const empty = await run(['status', '--fields=', '--json']);
+  assert.equal(empty.code, EXIT.usage);
+  assert.equal(JSON.parse(empty.out).error, '--fields needs at least one field name');
+  assert.equal(empty.runner.calls.filter((c) => c.file === 'ssh').length, 0, 'no query was sent');
 });
 
 test('auth status reports the credential without a change to ask about', async () => {
@@ -866,7 +944,7 @@ test('the dashboard under --json carries the same keys, typed', async () => {
   assert.equal(code, EXIT.ok);
   const document = JSON.parse(out);
   assert.deepEqual(Object.keys(document),
-    ['ok', 'op', 'user', 'host', 'total', 'sections', 'entries', 'help']);
+    ['ok', 'op', 'bin', 'description', 'user', 'host', 'total', 'sections', 'entries', 'help']);
   assert.equal(document.op, 'dashboard');
   assert.equal(document.total, 6);
   assert.deepEqual(document.sections[2], {
@@ -1044,6 +1122,90 @@ test('a submit the server refuses is an error record carrying the server\'s own 
       { ok: false, op: 'submit', code: 'SUBMIT_REFUSED', kind: 'transport' },
     );
     assert.equal(record.error, `Gerrit refused to submit change 200102: ${refusal}`);
+  } finally {
+    Session.prototype.token = restored;
+  }
+});
+
+test('a submit of a change that has already merged is a no-op success, exit 0', async () => {
+  const restored = Session.prototype.token;
+  Session.prototype.token = async () => ({ token: 'placeholder-not-a-real-token', backend: 'file', location: null });
+  try {
+    const { code, out, err, runner } = await run(['submit', '200101', '--json'], {
+      fetchRoutes: [
+        { path: '/a/changes/200101/submit', status: 409, body: 'change is merged\n' },
+        {
+          path: '/a/changes/200101',
+          body: ")]}'\n" + JSON.stringify({
+            _number: 200101,
+            change_id: `I${'a'.repeat(40)}`,
+            project: 'acme/apps/widget-console',
+            branch: 'main',
+            topic: 'stack-of-three',
+            subject: 'Split the queue reader out of the daemon',
+            status: 'MERGED',
+          }),
+        },
+      ],
+    });
+    assert.equal(code, EXIT.ok);
+    assert.equal(err, '');
+    assert.equal(runner.calls.filter((call) => call.file === 'ssh').length, 0);
+    assert.deepEqual(JSON.parse(out), {
+      ok: true,
+      op: 'submit',
+      change: 200101,
+      status: 'MERGED',
+      already_merged: true,
+      change_id: `I${'a'.repeat(40)}`,
+      project: 'acme/apps/widget-console',
+      branch: 'main',
+      topic: 'stack-of-three',
+      subject: 'Split the queue reader out of the daemon',
+    });
+  } finally {
+    Session.prototype.token = restored;
+  }
+});
+
+test('a submit is asked first, and the change is read back only after a refusal', async () => {
+  const restored = Session.prototype.token;
+  Session.prototype.token = async () => ({ token: 'placeholder-not-a-real-token', backend: 'file', location: null });
+  try {
+    const merged = ")]}'\n" + JSON.stringify({ _number: 200101, status: 'MERGED' });
+    const fresh = await run(['submit', '200101', '--json'], {
+      fetchRoutes: [{ path: '/a/changes/200101/submit', body: merged }],
+    });
+    assert.equal(fresh.code, EXIT.ok);
+    assert.equal(JSON.parse(fresh.out).already_merged, false, 'this submit is what merged it');
+
+    const stillOpen = await run(['submit', '200102', '--json'], {
+      fetchRoutes: [
+        { path: '/a/changes/200102/submit', status: 409, body: 'submit requirement unsatisfied' },
+        { path: '/a/changes/200102', body: ")]}'\n" + JSON.stringify({ _number: 200102, status: 'NEW' }) },
+      ],
+    });
+    assert.equal(stillOpen.code, EXIT.transport, 'an open change the server refuses is still refused');
+    assert.equal(JSON.parse(stillOpen.out).code, 'SUBMIT_REFUSED');
+
+    const abandoned = await run(['submit', '200102', '--json'], {
+      fetchRoutes: [
+        { path: '/a/changes/200102/submit', status: 409, body: 'change is abandoned' },
+        { path: '/a/changes/200102', body: ")]}'\n" + JSON.stringify({ _number: 200102, status: 'ABANDONED' }) },
+      ],
+    });
+    assert.equal(abandoned.code, EXIT.transport, 'an abandoned change cannot become merged');
+    assert.equal(JSON.parse(abandoned.out).error, 'Gerrit refused to submit change 200102: change is abandoned');
+
+    const unreadable = await run(['submit', '200102', '--json'], {
+      fetchRoutes: [
+        { path: '/a/changes/200102/submit', status: 409, body: 'submit requirement unsatisfied' },
+        { path: '/a/changes/200102', status: 404, body: 'Not found' },
+      ],
+    });
+    assert.equal(unreadable.code, EXIT.transport);
+    assert.equal(JSON.parse(unreadable.out).code, 'SUBMIT_REFUSED',
+      'a read-back that fails leaves the refusal standing, in the server\'s words');
   } finally {
     Session.prototype.token = restored;
   }

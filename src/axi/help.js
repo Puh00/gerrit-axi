@@ -15,10 +15,11 @@ export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review sta
 usage: gerrit-axi [<command>] [options]
        gerrit-axi <command> --help     that command's options and examples
 
-With no command it prints your dashboard: the changes awaiting your attention,
-your work in progress, your outgoing reviews, the reviews you were asked for and
-the changes you are CCed on, grouped as Gerrit's own dashboard groups them, with
-a count per section and the next step to run.
+With no command it prints your dashboard: this binary and one line on what it
+is, then the changes awaiting your attention, your work in progress, your
+outgoing reviews, the reviews you were asked for and the changes you are CCed
+on, grouped as Gerrit's own dashboard groups them, with a count per section and
+the next step to run.
 
 Records go to stdout: TOON by default, strict JSON with --json. A failure writes
 a typed error record to stdout in that same format, with ok: false, writes
@@ -46,6 +47,9 @@ commands, and the options each one takes:
   status <change>...          specific change numbers
   status --query '<query>'    an arbitrary Gerrit query
       --limit <n>             maximum changes to fetch (default 100)
+      --fields <a,b>          columns to add to the default change, subject,
+                              status, submit: any changes column of show,
+                              labels or votes for that table, or all
   show <change>...            full review state, one record per change
       --messages <n|all>      also emit that many cover messages (default 0)
       --comments              also emit the inline comments
@@ -64,7 +68,8 @@ commands, and the options each one takes:
       --branch <b>            the branch to propose against (default: the
                               server's default branch)
   submit <change>             ask the server to submit one change; a refusal is
-                              reported in the server's own words
+                              reported in the server's own words, and a change
+                              already merged is a success, already_merged: true
   message <change>            post one change-level message on the change's
                               current patch set; the text is read from stdin
       --file <path>           ...or from this file. Never from argv. No label,
@@ -95,7 +100,8 @@ global options:
 Every read answers about a whole list of changes in one invocation. Per-change
 scalars arrive in the 'changes' table; anything per-label arrives in 'labels' and
 'votes', keyed by change number and label name, so a label the server gains adds
-a row and moves no column.
+a row and moves no column. show carries all three; status carries a short
+'changes' row unless --fields asks for more.
 
 Host, port, user and project are resolved from the 'origin' git remote of the
 current directory first, then from GERRIT_HOST / GERRIT_USER / GERRIT_PORT, then
@@ -123,9 +129,10 @@ export const COMMAND_HELP = {
 
 usage: gerrit-axi [dashboard] [options]
 
-The changes awaiting your attention, your work in progress, your outgoing
-reviews, the reviews you were asked for and the changes you are CCed on, with a
-count per section. Takes no arguments.
+This binary and one line on what it is, then the changes awaiting your
+attention, your work in progress, your outgoing reviews, the reviews you were
+asked for and the changes you are CCed on, with a count per section. Takes no
+arguments.
 
 options:
   --rows <n>              rows shown per section (default 10, max 100)
@@ -142,7 +149,7 @@ examples:
   gerrit-axi dashboard --rows 25
   gerrit-axi dashboard --ambient
   gerrit-axi --json`,
-  status: `gerrit-axi status - one row per change, with its readiness and what blocks it
+  status: `gerrit-axi status - one short row per change: what it is and whether it can submit
 
 usage: gerrit-axi status [mine | <change>... | --query '<query>'] [options]
 
@@ -154,6 +161,13 @@ arguments (at most one form):
 
 options:
   --limit <n>             maximum changes to fetch (default 100)
+  --fields <a,b>          add to the default columns (change, subject, status,
+                          submit): project, branch, topic, owner, wip,
+                          submittable, blocked_on, patch_set, revision, ref,
+                          updated, created, url; labels or votes for that
+                          table; all for every column and both tables
+
+A row always has the default columns; show <change>... is the full review state.
 
 global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
   --rest-base <u> (see gerrit-axi --help)
@@ -161,7 +175,8 @@ global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
 examples:
   gerrit-axi status
   gerrit-axi status mine
-  gerrit-axi status --query 'status:open project:<project>' --limit 20`,
+  gerrit-axi status --query 'status:open project:<project>' --limit 20
+  gerrit-axi status mine --fields owner,blocked_on,labels`,
   show: `gerrit-axi show - full review state, one record per change
 
 usage: gerrit-axi show <change>... [options]
@@ -257,7 +272,9 @@ arguments:
                           submits whatever must go with it
 
 Takes no options of its own. A refusal is reported in the server's own words;
-whether a change may be submitted is the server's decision alone.
+whether a change may be submitted is the server's decision alone. A change that
+has already merged is a success with already_merged: true, so submitting twice
+is a no-op.
 
 global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
   --rest-base <u> (see gerrit-axi --help)
