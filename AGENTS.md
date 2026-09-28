@@ -12,6 +12,9 @@ the code.
 - Releases are cut by pushing a `v<version>` tag that matches `package.json`;
   `.github/workflows/release.yml` tests, packs and attaches the tarball to a
   GitHub Release. The distributed artifact is always CI's, never a local `npm pack`.
+  The release notes are that version's `CHANGELOG.md` section, extracted by
+  `scripts/changelog-section.js`; a version bump needs its section, and
+  `test/changelog.test.js` fails without one.
 
 ## Invariants, and where they are enforced
 
@@ -23,7 +26,7 @@ fails if any of them is broken, which is the intended way to find out.
 - No hostname literal anywhere in `src/` or `bin/` (RFC 2606 `example.*` names in
   usage text are the only exception). Host/port/user/project come from the
   `origin` git remote, then env, then config file — see the three-tier model in
-  README.md.
+  docs/configuration.md.
 - The git-remote tier answers only for a remote recognised as Gerrit's, by URL
   shape plus (for ambiguous shapes) corroborating repo evidence — never a forge
   deny-list, which the no-hostname-literal rule forbids anyway. Rejected remotes
@@ -114,8 +117,8 @@ fails if any of them is broken, which is the intended way to find out.
 - Next-step hints (`help[]`) are spelled only through `src/axi/hints.js`, which
   carries the call's connection overrides onto every command it names; the key is
   present only when a line applies. The rules for when a document gets one, and
-  the vote/submit boundary a hint may never cross, are the README's "Next steps";
-  `test/hints.test.js` pins each state. Message and comment bodies are cut to
+  the vote/submit boundary a hint may never cross, are "Next steps" in
+  docs/agent-tier.md; `test/hints.test.js` pins each state. Message and comment bodies are cut to
   `BODY_PREVIEW_CHARS` in `src/axi/records.js` with `chars`/`truncated` on the
   row, never a marker in the text.
 

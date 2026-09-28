@@ -10,7 +10,7 @@
  *
  * Accordingly this defaults to *empty*, and empty is a strict no-op. Out of the
  * box the tool prints raw comments and the presentation layer shows no severity
- * column at all. See `severity.patterns` in the README.
+ * column at all. See `severity.patterns` in docs/configuration.md.
  */
 
 /**

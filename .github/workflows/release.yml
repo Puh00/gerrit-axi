@@ -1,6 +1,7 @@
 # Builds the installable tarball from the tagged commit and attaches it to a
-# GitHub Release for that tag. The test run only stops a broken tag becoming a
-# published artifact; review happens before merge.
+# GitHub Release for that tag, whose notes are the version's CHANGELOG.md section
+# followed by GitHub's generated list of merged pull requests. The test run only
+# stops a broken tag becoming a published artifact; review happens before merge.
 name: release
 
 on:
@@ -34,6 +35,11 @@ jobs:
             exit 1
           fi
 
+      # The release notes are the version's CHANGELOG.md section, so a tag whose
+      # version has none would publish a release that says nothing a user can read.
+      - name: Extract the release notes from CHANGELOG.md
+        run: node scripts/changelog-section.js "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
+
       # No install step: the project has zero dependencies (see AGENTS.md). A
       # change that adds one must add an install step back before `npm test`.
       - run: npm test
@@ -46,4 +52,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
-        run: gh release create "$GITHUB_REF_NAME" "$TARBALL" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+        run: gh release create "$GITHUB_REF_NAME" "$TARBALL" --verify-tag --notes-file "$RUNNER_TEMP/notes.md" --generate-notes --title "$GITHUB_REF_NAME"

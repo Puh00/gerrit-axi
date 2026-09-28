@@ -1,6 +1,6 @@
 {
   "name": "gerrit-axi",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A read-only Gerrit CLI, and an agent tier that can also publish, post a change message, and submit: attention set, change readiness, inline review comments. Neither can vote.",
   "type": "module",
   "engines": {
@@ -20,7 +20,11 @@
   "files": [
     "bin",
     "src",
+    "docs",
+    "skills",
     "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "LICENSE",
     "NOTICE"
   ],
