@@ -33,7 +33,7 @@ import { listComments } from '../core/comments.js';
 import { postChangeMessage } from '../core/message.js';
 import { publishChanges } from '../core/publish.js';
 import { submitChange } from '../core/submit.js';
-import { changeNumbers, messageCount, positiveInt } from './args.js';
+import { changeNumbers, messageCount, positiveInt, statusFields } from './args.js';
 import { command, invocation, submittableHint, truncationHint } from './hints.js';
 import { hookCommand, tildify } from './setup.js';
 import {
@@ -43,6 +43,7 @@ import {
   entryRow,
   labelRows,
   messageRows,
+  pickFields,
   publishedRow,
   sectionRow,
   voteRows,
@@ -89,7 +90,8 @@ const AMBIENT_QUERY_BUDGET_MS = 5_000;
  * someone's review server.
  *
  * Every section row is always present. Nothing awaiting you is a fact worth a
- * row, not a table to omit.
+ * row, not a table to omit. The tool's `bin` and `description` come first, as
+ * they do on the ambient view, so a caller that ran it bare knows what answered.
  *
  * @param {Ctx} ctx
  * @returns {Promise<Record<string, unknown>>}
@@ -116,6 +118,7 @@ export async function opDashboard(ctx) {
   return {
     ok: true,
     op: 'dashboard',
+    ...identity(ctx),
     user: session.config.user,
     host: session.config.host,
     total: distinct,
@@ -172,10 +175,22 @@ function distinctChanges(sections) {
   return new Set(sections.flatMap((s) => s.changes.map((change) => change.number))).size;
 }
 
-/** One line on what gerrit-axi is, for the session a hook starts. */
+/** One line on what gerrit-axi is, for the home view and the session a hook starts. */
 export const DESCRIPTION = 'Gerrit code review for agents: what awaits you, change readiness and'
   + ' inline comments as records; publishes, posts change messages and submits, and cannot vote.'
   + ' Prefer it over raw `gerrit query` over ssh or Gerrit\'s REST API.';
+
+/**
+ * Who is answering, ahead of the live data on the home view and the ambient
+ * view alike: this binary, as the hook would name it and with the home
+ * directory shown as `~`, and one line on what it is.
+ *
+ * @param {Pick<Ctx, 'env'|'execPath'>} ctx
+ * @returns {{bin: string, description: string}}
+ */
+function identity({ env = {}, execPath = '' }) {
+  return { bin: tildify(hookCommand({ execPath, env }).bin, env), description: DESCRIPTION };
+}
 
 /**
  * `dashboard --ambient` -- what a session-start hook prints (`gerrit-axi setup
@@ -195,7 +210,7 @@ async function ambientView({ args, connect, env = {}, execPath = '' }) {
   const { overrides } = args;
   const run = (/** @type {Array<string|number>} */ words) => command(words, overrides);
   /** @type {Record<string, unknown>} */
-  const doc = { bin: tildify(hookCommand({ execPath, env }).bin, env), description: DESCRIPTION };
+  const doc = identity({ env, execPath });
 
   /** @type {import('../core/session.js').Session} */
   let session;
@@ -341,6 +356,11 @@ function publishHint(overrides) {
  * or a raw Gerrit query. Newest first, matching what the question "what changed"
  * wants. `more` is the server's word that `--limit` cut the page short.
  *
+ * A row is the few columns that pick a change (`STATUS_FIELDS` in records.js);
+ * `--fields` adds columns, the `labels` and `votes` tables, or `all` of them,
+ * and `show` is the detail view. The hints read the whole row, so what they
+ * name does not depend on what the caller asked to see.
+ *
  * @param {Ctx} ctx
  * @returns {Promise<Record<string, unknown>>}
  */
@@ -364,6 +384,7 @@ export async function opStatus({ session, args }) {
   }
 
   const limit = positiveInt(flags['--limit'], 100, '--limit');
+  const { columns, tables } = statusFields(flags['--fields']);
   const page = await queryChangePage(session, spec, { limit });
   const changes = sortByLastUpdatedDesc(page.changes);
   const rows = changes.map(changeRow);
@@ -373,9 +394,9 @@ export async function opStatus({ session, args }) {
     op: 'status',
     count: changes.length,
     more: page.more,
-    changes: rows,
-    labels: changes.flatMap(labelRows),
-    votes: changes.flatMap(voteRows),
+    changes: rows.map((row) => pickFields(row, columns)),
+    ...(tables.has('labels') ? { labels: changes.flatMap(labelRows) } : {}),
+    ...(tables.has('votes') ? { votes: changes.flatMap(voteRows) } : {}),
     ...withHelp(statusHelp(spec, args, rows, page.more, limit)),
   };
 }
@@ -686,7 +707,9 @@ function publishHelp(publication, rows, overrides) {
  * would only invent an order between separate transactions.
  *
  * Nothing is checked first. A refusal is the server's, in its own words, and
- * arrives as an error record with code SUBMIT_REFUSED.
+ * arrives as an error record with code SUBMIT_REFUSED -- unless the change had
+ * already merged, which is what the caller wanted: that is a success with
+ * `already_merged: true`, exit 0, so a repeated submit is a no-op.
  *
  * @param {Ctx} ctx
  * @returns {Promise<Record<string, unknown>>}
@@ -708,6 +731,7 @@ export async function opSubmit({ session, args }) {
     op: 'submit',
     change: submitted.number,
     status: submitted.status,
+    already_merged: submitted.alreadyMerged,
     change_id: submitted.changeId,
     project: submitted.project,
     branch: submitted.branch,

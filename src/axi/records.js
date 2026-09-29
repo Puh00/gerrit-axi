@@ -101,6 +101,35 @@ export function changeRow(change) {
   };
 }
 
+/** Every column of `changeRow`, in its order. */
+export const CHANGE_FIELDS = /** @type {const} */ ([
+  'change', 'subject', 'project', 'branch', 'topic', 'owner', 'status', 'wip', 'submit',
+  'submittable', 'blocked_on', 'patch_set', 'revision', 'ref', 'updated', 'created', 'url',
+]);
+
+/**
+ * The columns a `status` row carries unless `--fields` asks for more: enough to
+ * pick a change -- which one, what it is, whether it is open, and the server's
+ * verdict on submitting it. `show` is the detail view.
+ */
+export const STATUS_FIELDS = /** @type {const} */ (['change', 'subject', 'status', 'submit']);
+
+/** The per-label tables `status --fields` adds by name; `all` adds both. */
+export const STATUS_TABLES = /** @type {const} */ (['labels', 'votes']);
+
+/**
+ * A change row cut to the columns named, in `changeRow`'s own order whatever
+ * order they were named in, so a table's header never depends on the caller's
+ * spelling.
+ *
+ * @param {Record<string, string|number|boolean|null>} row
+ * @param {ReadonlySet<string>} fields
+ * @returns {Record<string, string|number|boolean|null>}
+ */
+export function pickFields(row, fields) {
+  return Object.fromEntries(Object.entries(row).filter(([key]) => fields.has(key)));
+}
+
 /**
  * One row per dashboard section, present whether or not anything matched: a
  * section with nothing in it is a fact about the caller's day, not a missing

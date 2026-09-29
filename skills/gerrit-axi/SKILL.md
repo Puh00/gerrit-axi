@@ -34,6 +34,7 @@ Gerrit checkout, pass `--host <host>` after the command.
 gerrit-axi                           the dashboard (also `gerrit-axi dashboard`)
 gerrit-axi status [mine|<change>...] changes awaiting you, yours, or those named
 gerrit-axi status --query '<query>'  any Gerrit query; spell negation NOT, never a leading -
+    --fields <a,b>                   add columns to status rows, labels/votes, or all
 gerrit-axi show <change>...          review state: changes, labels, votes
 gerrit-axi comments <change>...      inline comments (--bots | --humans)
 gerrit-axi auth status               whether the stored credential still works
@@ -51,7 +52,10 @@ Run `gerrit-axi --help` for every option.
 - It cannot vote, add reviewers, or set labels, and no workaround exists: ask
   the user when a change needs a vote.
 - `submit` only a change the server marks submittable; a refusal comes back in
-  the server's own words.
+  the server's own words. A change that has already merged is a success with
+  `already_merged: true`.
+- `status` rows are short (`change`, `subject`, `status`, `submit`); use `show`
+  for labels, votes and what blocks a change, or `status --fields` to add columns.
 - `publish` keeps every Change-Id a commit already has. Never edit or strip one:
   a new Change-Id makes a new change and orphans the review.
 - Bodies over 1000 characters are cut, with `truncated: true` on the row; add

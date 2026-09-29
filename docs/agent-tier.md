@@ -16,6 +16,7 @@ gerrit-axi status mine                 your open changes
 gerrit-axi status <change>...          specific change numbers
 gerrit-axi status --query '<query>'    an arbitrary Gerrit query
     --limit <n>                        maximum changes to fetch (default 100)
+    --fields <a,b>                     add columns, the labels or votes table, or all
 
 gerrit-axi show <change>...            full review state, one record per change
     --messages <n|all>                 also emit that many cover messages (default 0)
@@ -115,6 +116,27 @@ shell script screen-scraping `gerrit`'s table had to do by hand:
 them, because that detail costs work per row. The stack is always asked for: a
 parent revision going stale is what a stack watch exists to notice.
 
+`status` is the list view, so its rows are short: `change`, `subject`, `status`
+and `submit`, enough to pick a change, and no `labels` or `votes` table.
+`--fields` adds to them. A `changes` column of `show` adds that column, `labels`
+or `votes` adds that table, and `all` adds every column and both tables, as
+`show` carries them. Columns keep the row's own order whatever order they are
+named in, and a name that is none of these is refused before the server is
+asked, with the ones that are:
+
+```console
+$ gerrit-axi status mine --fields owner,blocked_on
+ok: true
+op: status
+count: 3
+more: false
+changes[3]{change,subject,owner,status,submit,blocked_on}:
+  200103,Wire the retry ceiling to the managed configuration,ada,NEW,NOT_READY,Quokka-Review
+  200102,Give the queue reader its own retry ceiling,ada,NEW,NOT_READY,"Xylophone-Gate,Zebu-Herding"
+  200101,Split the queue reader out of the daemon,ada,NEW,OK,""
+help[2]: Run `gerrit-axi show <change>... --comments` for the full review state of a listed change,"Run `gerrit-axi submit <change>` for a change the server marks submittable: 200101"
+```
+
 ## Next steps
 
 A document ends with `help[]`, the next steps as complete commands, only where
@@ -135,12 +157,10 @@ no line names a vote, a label or a reviewer, and `submit` is named only for a
 change the server's own submit records mark submittable, never after the server
 refused one.
 
-After the `changes`, `labels` and `votes` tables, `status mine` on the stack
-above ends with:
-
-```text
-help[2]: Run `gerrit-axi show <change>... --comments` for the full review state of a listed change,Run `gerrit-axi submit <change>` for a change the server marks submittable: 200101
-```
+The `status mine` under [Records, not layout](#records-not-layout) ends with a
+`show` for the detail and a `submit` for the one change the server marks
+submittable. Those lines read the whole row, so what they name does not depend
+on the `--fields` asked for.
 
 `status` also carries `more`, the server's word that `--limit` cut the page
 short; when it is true the last line of `help` repeats the call with the limit
@@ -166,13 +186,16 @@ apply to is emitted.
 
 ## The dashboard
 
-With no command, `gerrit-axi` prints content rather than usage: your open changes
-grouped the way Gerrit's own dashboard groups them. Usage is for `--help`.
+With no command, `gerrit-axi` prints content rather than usage: which binary
+answered and what it is, then your open changes grouped the way Gerrit's own
+dashboard groups them. Usage is for `--help`.
 
 ```console
 $ gerrit-axi
 ok: true
 op: dashboard
+bin: ~/.local/bin/gerrit-axi
+description: "Gerrit code review for agents: ..."
 user: ada
 host: gerrit.example.com
 total: 6
@@ -192,7 +215,8 @@ entries[6]{section,change,subject,owner,submit}:
 help[1]: Run `gerrit-axi show 184458 --comments` for the full state of what awaits you
 ```
 
-`sections` is the summary, one row per section whether or not anything matched:
+`bin` and `description` are the ones the [ambient view](#session-integration)
+prints. `sections` is the summary, one row per section whether or not anything matched:
 `count` is how many changes it holds, `shown` how many rows of `entries` carry it,
 and `more` whether any were held back, by the ten-row cap (`--rows` raises it, to
 at most 100) or by the server. `query` is the Gerrit query that reproduces the
@@ -377,7 +401,11 @@ exit=5
 ```
 
 On success the record carries the change's `status` as the server reports it,
-normally `MERGED`, and no hint: a merge is a confirmation. A refusal's `help` is
+normally `MERGED`, and no hint: a merge is a confirmation. Submitting a change
+that has already merged is the same success, with `already_merged: true` and exit
+0, so a repeated submit is a no-op. The server refuses that submit like any
+other, so only after a refusal is the change read back, and only a `MERGED`
+status turns the refusal into a success. A refusal's `help` is
 the `show` that names what blocks the change; nothing suggests submitting again,
 and nothing here can cast the vote that would unblock it. It takes one change
 per call because the server already decides what goes in with it — the changes

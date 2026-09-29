@@ -306,7 +306,7 @@ test('an empty comment list points at the cover messages, or at the filter that 
     ['Run `gerrit-axi comments 200102` for the comments the filter excluded']);
 }));
 
-test('submit: a merge is a confirmation with no hint; anything else, and a refusal, point at show', withToken(async () => {
+test('submit: a merge, or one already made, is a confirmation with no hint; anything else, and a refusal, point at show', withToken(async () => {
   const info = (status) => `)]}'\n${JSON.stringify({ _number: 200101, status, project: 'acme/apps/widget-console' })}`;
   const merged = await runJson(['submit', '200101'], {
     fetchRoutes: [{ path: '/a/changes/200101/submit', body: info('MERGED') }],
@@ -319,8 +319,22 @@ test('submit: a merge is a confirmation with no hint; anything else, and a refus
   });
   assert.deepEqual(pending.document.help, ['Run `gerrit-axi show 200101` to see whether it has merged']);
 
+  // A change that had already merged is the same confirmation: nothing to do next.
+  const again = await runJson(['submit', '200101'], {
+    fetchRoutes: [
+      { path: '/a/changes/200101/submit', status: 409, body: 'change is merged' },
+      { path: '/a/changes/200101', body: info('MERGED') },
+    ],
+  });
+  assert.equal(again.code, EXIT.ok);
+  assert.equal(again.document.already_merged, true);
+  assert.equal('help' in again.document, false);
+
   const refused = await runJson(['submit', '200102', '--host', 'review.example.org'], {
-    fetchRoutes: [{ path: '/a/changes/200102/submit', status: 409, body: 'submit requirement unsatisfied' }],
+    fetchRoutes: [
+      { path: '/a/changes/200102/submit', status: 409, body: 'submit requirement unsatisfied' },
+      { path: '/a/changes/200102', body: `)]}'\n${JSON.stringify({ _number: 200102, status: 'NEW' })}` },
+    ],
   });
   assert.equal(refused.code, EXIT.transport);
   assert.equal(refused.document.code, 'SUBMIT_REFUSED');

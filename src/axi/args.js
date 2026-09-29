@@ -13,6 +13,7 @@
  */
 
 import { UsageError } from './output.js';
+import { CHANGE_FIELDS, STATUS_FIELDS, STATUS_TABLES } from './records.js';
 
 /** Applies to every subcommand; overrides every config tier. */
 const GLOBAL_WITH_VALUE = new Set(['--host', '--user', '--port', '--project', '--rest-base']);
@@ -31,7 +32,7 @@ const GLOBAL_OPTIONS = ['--json', '--host', '--user', '--port', '--project', '--
  */
 export const COMMAND_OPTIONS = {
   dashboard: { withValue: ['--rows'], boolean: ['--ambient'] },
-  status: { withValue: ['--query', '--limit'], boolean: [] },
+  status: { withValue: ['--query', '--limit', '--fields'], boolean: [] },
   show: { withValue: ['--messages'], boolean: ['--comments', '--bots', '--humans', '--full'] },
   comments: { withValue: [], boolean: ['--bots', '--humans', '--full'] },
   auth: { withValue: [], boolean: [] },
@@ -230,6 +231,41 @@ export function messageCount(value) {
     throw new UsageError(`--messages needs a whole number or 'all', got: ${value}`);
   }
   return Number(value);
+}
+
+/**
+ * `status --fields a,b` -- the columns and tables a `status` document carries
+ * beyond its default. A name is a `changes` column, `labels` or `votes` for that
+ * table, or `all` for every column and both tables. The default columns are
+ * always carried, so a list names only what it adds. A name that is none of
+ * these is refused before the server is asked, with the ones that are.
+ *
+ * @param {string|boolean|undefined} value
+ * @returns {{columns: Set<string>, tables: Set<string>}}
+ */
+export function statusFields(value) {
+  const columns = new Set(/** @type {readonly string[]} */ (STATUS_FIELDS));
+  const tables = new Set();
+  if (typeof value !== 'string') return { columns, tables };
+  const names = value.split(',').map((name) => name.trim()).filter((name) => name !== '');
+  const known = [...CHANGE_FIELDS, ...STATUS_TABLES, 'all'];
+  const valid = `Fields: ${known.join(', ')}.`;
+  if (names.length === 0) throw new UsageError('--fields needs at least one field name', valid);
+  for (const name of names) {
+    if (name === 'all') {
+      for (const field of CHANGE_FIELDS) columns.add(field);
+      for (const table of STATUS_TABLES) tables.add(table);
+    } else if ((/** @type {readonly string[]} */ (STATUS_TABLES)).includes(name)) {
+      tables.add(name);
+    } else if ((/** @type {readonly string[]} */ (CHANGE_FIELDS)).includes(name)) {
+      columns.add(name);
+    } else {
+      const near = nearest(name, known);
+      throw new UsageError(`unknown field for status: ${name}`,
+        `${near ? `Did you mean ${near}? ` : ''}${valid}`);
+    }
+  }
+  return { columns, tables };
 }
 
 /**
