@@ -101,8 +101,9 @@ Four properties are the point of that shape, and each one replaces a thing a
 shell script screen-scraping `gerrit`'s table had to do by hand:
 
 - **One invocation, a whole list.** A watch following a nine-change stack makes
-  one call and gets nine records. `status` and `show` both send a single
-  `gerrit query`; the dashboard sends four, one per question the server answers
+  one call and gets nine records. `status` sends a single `gerrit query`, and
+  `show` one more only for a dependent it was not asked about (below); the
+  dashboard sends four, one per question the server answers
   in one query; `comments` needs one REST call per change, because that is what
   the endpoint offers.
 - **Labels are keyed by name, never by column.** Per-change scalars live in
@@ -121,6 +122,14 @@ shell script screen-scraping `gerrit`'s table had to do by hand:
 `show` asks the server for the cover messages only when `--messages` will emit
 them, because that detail costs work per row. The stack is always asked for: a
 parent revision going stale is what a stack watch exists to notice.
+
+`current` in `depends_on` is the server's own flag. Gerrit sends none on a
+`needed_by` entry, and lists there every patch set of a dependent built on this
+change, its outdated ones too, so `show` fills it: `true` when the patch set in
+the row's `ref` is that change's current one, `false` for one since replaced,
+which stays in the table as history. A dependent among the changes named is read
+from the same answer; any other is asked for in one more query, and one the
+server does not return keeps `null`.
 
 `status` is the list view, so its rows are short: `change`, `subject`, `status`
 and `submit`, enough to pick a change, and no `labels` or `votes` table.
@@ -390,6 +399,17 @@ server after the push, then `help`: the `show` that follows the new changes, the
 squash that made a patch set, the `message` that says what it changed. `current`
 is whether the commit just pushed is now that change's current patch set, and
 `stamped` whether this publish had to give it its Change-Id.
+
+A commit dropped from HEAD leaves its change open on the server, still in the
+topic, and a server that submits topics whole would merge it with the rest. So
+after a stack, `left_behind` lists the topic's open changes on this project and
+branch whose Change-Id the push did not carry, as `change`, `subject`, `url` and
+`patch_set`, and `help` names the `show` for them with the advice to abandon each
+one dropped on purpose. Nothing abandons them: this tool cannot, and a change
+left out by mistake belongs back on HEAD instead. The list is empty when there
+are none, and absent after a squash. The topic is asked after the push has
+succeeded, so a failure to ask does not fail the publish: `left_behind` is
+absent and `left_behind_warning` carries the reason.
 
 `submit <change>` asks the server to submit one change. Whether it may is the
 server's decision alone, so nothing is checked first, and a refusal comes back in

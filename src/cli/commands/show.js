@@ -277,11 +277,11 @@ function describeDependency(dependency, colorize, role) {
   if (dependency.isCurrentPatchSet === true) {
     bits.push(colorize('green', 'that change\'s current patch set'));
   } else if (dependency.isCurrentPatchSet === false) {
-    // A stack built on a superseded revision. Worth saying out loud in both
-    // directions: rebase this change, or the other one is the one behind.
+    // Worth saying out loud in both directions: a superseded parent means this
+    // change wants a rebase, and a superseded child is history, not a dependent.
     bits.push(colorize('yellow', role === 'parent'
       ? 'superseded -- that change has a newer patch set'
-      : 'superseded -- built on an older revision of this change'));
+      : 'superseded -- an older patch set of that change'));
   }
   return bits.join('  ');
 }

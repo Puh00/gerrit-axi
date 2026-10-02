@@ -28,6 +28,7 @@ import { readFile } from 'node:fs/promises';
 import { authStatus } from '../core/auth.js';
 import {
   buildQuery,
+  fillNeededByCurrency,
   queryChangePage,
   queryChanges,
   sortByLastUpdatedDesc,
@@ -48,6 +49,7 @@ import {
   dependencyRows,
   entryRow,
   labelRows,
+  leftBehindRow,
   messageRows,
   pickFields,
   publishedRow,
@@ -491,10 +493,10 @@ export async function opShow({ session, args }) {
   // revision is the thing a stack watch exists to notice.
   const include = keep > 0 ? ['comments', 'dependencies'] : ['dependencies'];
 
-  const found = await queryChanges(session, { kind: 'changes', numbers }, {
+  const found = await fillNeededByCurrency(session, await queryChanges(session, { kind: 'changes', numbers }, {
     limit: numbers.length,
     include,
-  });
+  }));
   const byNumber = new Map(found.map((change) => [change.number, change]));
   const changes = numbers
     .map((number) => byNumber.get(number))
@@ -679,12 +681,17 @@ export async function opPublish({ session, args }) {
     count: publication.published.length,
     published: publication.published.map(publishedRow),
     changes: rows,
+    ...(publication.leftBehind === null ? {} : { left_behind: publication.leftBehind.map(leftBehindRow) }),
+    ...(publication.leftBehindError === null ? {} : {
+      left_behind_warning: `could not list the topic's other open changes: ${publication.leftBehindError.message}`,
+    }),
     help: publishHelp(publication, rows, overrides),
   };
 }
 
 /**
- * After a publish: the changes to follow; the stack as the server lists it; on
+ * After a publish: the changes to follow; the stack as the server lists it; the
+ * open topic members a stack publish left behind, with the reason to abandon them; on
  * a squash that made a patch set, the message that says what it changed, since
  * the squash carries the oldest commit's message; and `submit` only for a
  * change the server already marks submittable, which a fresh push rarely is.
@@ -700,6 +707,14 @@ function publishHelp(publication, rows, overrides) {
   const help = [`Run \`${run(['show', ...numbers, '--comments'])}\` to follow the review`];
   if (publication.shape === 'stack' && publication.topic !== null) {
     help.push(`Run \`${run(['status', '--query', `topic:${publication.topic}`])}\` for the stack as the server lists it`);
+  }
+  const behind = publication.leftBehind ?? [];
+  if (behind.length > 0) {
+    // This tool cannot abandon a change, so the line names the read that shows
+    // them and leaves the abandoning to whoever dropped the commits.
+    help.push(`Run \`${run(['show', ...behind.map((change) => change.number)])}\` for the open changes`
+      + ` in topic ${publication.topic} whose commits are no longer on HEAD (left_behind);`
+      + ' abandon each one dropped on purpose, since a server that submits topics whole would merge it too');
   }
   if (publication.shape === 'squash' && publication.newPatchSets) {
     help.push(`Run \`${run(['message', numbers[0], '--file', '<path>'])}\` to say what this patch set changed,`

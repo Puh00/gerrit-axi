@@ -216,6 +216,22 @@ test('the stack comes back with the staleness flag a stack watch exists to notic
   ]);
 });
 
+test('needed_by says which dependents are live, asking for a dependent show was not given', async () => {
+  // As Gerrit sends it: no isCurrentPatchSet on a neededBy entry, and the
+  // child's outdated patch set listed beside its current one.
+  const { code, out, runner } = await run(['show', '200101'], {
+    ssh: { 'change:200101': 'query-needed-by.txt', 'change:200102': 'query-stack.txt' },
+  });
+  assert.equal(code, EXIT.ok);
+  assert.deepEqual(table(out, 'needed_by').map((d) => [d.change, d.related, d.ref, d.current]), [
+    ['200101', '200102', 'refs/changes/02/200102/1', 'false'],
+    ['200101', '200102', 'refs/changes/02/200102/2', 'true'],
+  ]);
+  const queries = runner.calls.filter((c) => c.file === 'ssh').map((c) => c.args.at(-2));
+  assert.equal(queries.length, 2);
+  assert.match(String(queries[1]), /^change:200102\b/, 'one more query, for the dependent alone');
+});
+
 test('a change number the server did not return is reported missing, not as a failure', async () => {
   const { code, out } = await run(['show', '200101', '999999', '200103']);
   assert.equal(code, EXIT.ok, 'a change that is gone is data, not a broken call');
@@ -1072,6 +1088,66 @@ test('publish --stack is one push, answered with the changes the server now hold
     ['200102', 'stack-of-three'],
     ['200103', 'stack-of-three'],
   ]);
+  assert.match(stdout.text, /^left_behind: \[\]$/m, 'every open change in the topic was just published');
+});
+
+test('publish --stack lists the open topic changes it left behind, and a failed look is a warning', async () => {
+  // HEAD holds only the first commit of the recorded stack; the server's topic
+  // still holds all three.
+  const base = '0'.repeat(40);
+  const a = 'a'.repeat(40);
+  const record = [a, a, base, 'Ada', 'ada@example.com', '1785600000 +0000', 'Ada', 'ada@example.com',
+    '1785600000 +0000', `Split the queue reader out of the daemon\n\nChange-Id: I${a}\n`].join('\0') + '\0';
+  const runnerWith = (/** @type {any} */ topicAnswer) => fakeRunner([
+    { match: (f, args) => f === 'git' && args.includes('remote'), result: { stdout: REMOTE } },
+    {
+      match: (f, args) => f === 'git' && args.includes('ls-remote'),
+      result: { stdout: `ref: refs/heads/main\tHEAD\n${base}\tHEAD\n` },
+    },
+    { match: (f, args) => f === 'git' && args.includes(`${base}^{commit}`), result: { stdout: base } },
+    { match: (f, args) => f === 'git' && args.includes('HEAD^{commit}'), result: { stdout: a } },
+    { match: (f, args) => f === 'git' && args.includes('merge-base'), result: { stdout: base } },
+    { match: (f, args) => f === 'git' && args.includes('log'), result: { stdout: record } },
+    {
+      match: (f, args) => f === 'git' && args.includes('push'),
+      result: { stdout: `To x\n*\t${a}:refs/for/main%topic=stack-of-three\t[new reference]\nDone\n` },
+    },
+    { match: (f, args) => f === 'ssh' && String(args.at(-2)).includes('status:open'), result: topicAnswer },
+    { match: (f) => f === 'ssh', result: { stdout: fixture('query-stack.txt') } },
+  ]);
+  const publish = async (/** @type {any} */ runner) => {
+    const stdout = captureStream();
+    const stderr = captureStream();
+    const code = await main(['publish', '--stack', '--topic', 'stack-of-three'], {
+      cwd: '/some/checkout',
+      env: ENV,
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+      runner,
+      fetchImpl: fakeFetch([]),
+    });
+    return { code, out: stdout.text, err: stderr.text };
+  };
+
+  const left = await publish(runnerWith({ stdout: fixture('query-stack.txt') }));
+  assert.equal(left.code, EXIT.ok);
+  assert.deepEqual(table(left.out, 'left_behind').map((row) => [row.change, row.subject, row.patch_set, row.url]), [
+    ['200102', 'Give the queue reader its own retry ceiling', '2',
+      'https://gerrit.example.com/c/acme/apps/widget-console/+/200102'],
+    ['200103', 'Wire the retry ceiling to the managed configuration', '1',
+      'https://gerrit.example.com/c/acme/apps/widget-console/+/200103'],
+  ]);
+  assert.equal(left.out.includes('left_behind_warning'), false);
+
+  const failed = await publish(runnerWith({
+    code: 255,
+    stderr: 'ssh: connect to host gerrit.example.com port 29418: Connection refused\n',
+  }));
+  assert.equal(failed.code, EXIT.ok, 'the push succeeded, so the publish did');
+  assert.equal(failed.err, '');
+  assert.match(failed.out, /^ok: true$/m);
+  assert.match(failed.out, /^left_behind_warning: .*Connection refused/m);
+  assert.equal(/^left_behind\[/m.test(failed.out), false, 'unknown is not reported as empty');
 });
 
 test('submit asks the server and nothing else, and reports what it merged', async () => {

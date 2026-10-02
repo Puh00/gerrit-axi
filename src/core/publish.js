@@ -107,6 +107,14 @@ const LOG_FIELDS = ['%H', '%T', '%P', '%an', '%ae', '%ad', '%cn', '%ce', '%cd', 
  * @property {string|null} rewrittenFrom  local HEAD before, when Change-Ids were
  *   stamped into the branch; null when the branch was not touched
  * @property {Published[]} published  oldest first
+ * @property {import('./changes.js').Change[]|null} leftBehind  for a stack: the
+ *   topic's open changes on this branch whose Change-Id this publish did not
+ *   send -- a commit dropped from HEAD leaves its change open in the topic, and
+ *   a server that submits topics whole would merge it with the rest. Empty when
+ *   there are none; null for a squash, or when the server could not be asked
+ * @property {{code: string, message: string}|null} leftBehindError  why the
+ *   topic could not be asked; the push had already succeeded, so this is a
+ *   warning on the publication rather than a failure of it
  */
 
 /**
@@ -655,6 +663,9 @@ export async function publishChanges(session, {
     { limit: toPublish.length },
   );
   const byChangeId = new Map(found.map((change) => [change.id, change]));
+  const { leftBehind, leftBehindError } = topic === null
+    ? { leftBehind: null, leftBehindError: null }
+    : await openTopicMembersNotSent(session, server.branch, topic, toPublish);
 
   return {
     shape,
@@ -673,7 +684,39 @@ export async function publishChanges(session, {
         isCurrentPatchSet: change === null ? null : change.currentPatchSet?.revision === entry.commit,
       };
     }),
+    leftBehind,
+    leftBehindError,
   };
+}
+
+/**
+ * The topic's open changes on this project and branch that this publish did not
+ * send. Only this project and branch: a Change-Id is unique only there, and a
+ * topic may legitimately span repositories whose changes were never on this HEAD.
+ *
+ * Asked after the push has succeeded, so a failure here is returned, not thrown:
+ * the changes are on the server either way, and a caller told the publish failed
+ * would push again for nothing.
+ *
+ * @param {import('./session.js').Session} session
+ * @param {string} branch
+ * @param {string} topic
+ * @param {Array<{changeId: string}>} sent
+ * @returns {Promise<{leftBehind: import('./changes.js').Change[]|null,
+ *                    leftBehindError: {code: string, message: string}|null}>}
+ */
+async function openTopicMembersNotSent(session, branch, topic, sent) {
+  const ids = new Set(sent.map((entry) => entry.changeId));
+  try {
+    const open = await queryChanges(
+      session,
+      `project:${session.config.project} branch:${branch} topic:${topic} status:open`,
+    );
+    return { leftBehind: open.filter((change) => !ids.has(change.id)), leftBehindError: null };
+  } catch (err) {
+    if (!(err instanceof GerritError)) throw err;
+    return { leftBehind: null, leftBehindError: { code: err.code, message: err.message } };
+  }
 }
 
 /**

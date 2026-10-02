@@ -93,7 +93,8 @@ export function assertSafeConnection(conn, sources = {}) {
  * paying for the same data on every row.)
  *
  * `dependencies` adds `dependsOn` / `neededBy`, each carrying the revision it
- * refers to and whether that revision is still that change's current patch set.
+ * refers to; a `dependsOn` entry also says whether that revision is still that
+ * change's current patch set (see `fillNeededByCurrency` for `neededBy`).
  *
  * This is an allowlist, not a passthrough: a caller names a key here, never a
  * flag string, so nothing a caller supplies can become an element of argv.
