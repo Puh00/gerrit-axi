@@ -19,6 +19,17 @@ here is its GitHub Release notes, above the list of pull requests it merged.
   an earlier record's `baseline`, or a file holding only it, so a restarted
   watch neither misses nor repeats a change.
   `--interval` sets the poll interval (default 60 seconds, at least 15).
+- `gerrit-axi publish --stack` lists under `left_behind` the topic's open
+  changes on the branch whose commits are no longer on HEAD, such as one whose
+  commit was dropped before publishing again, with a `help` line to review and
+  abandon them. Nothing is abandoned. If the server cannot be asked, the publish
+  still succeeds and `left_behind_warning` says why.
+
+### Fixed
+
+- `needed_by` in `gerrit-axi show` fills `current`, which was always `null`:
+  `false` marks an outdated patch set of the dependent, `true` its current one.
+  `gerrit show` now marks an outdated dependent as superseded.
 
 ## [0.4.0]
 

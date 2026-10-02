@@ -454,11 +454,12 @@ const BASE = '0'.repeat(40);
 /**
  * A repository and a server for a publish through the entry point, as git and
  * ssh would report them: one commit on HEAD carrying its Change-Id, the push
- * answered as `push` says, and the readback answered from the recorded stack.
+ * answered as `push` says, the readback answered from the recorded stack, and a
+ * stack's query for its topic's open changes answered from `topic`.
  *
- * @param {{push?: any, readback?: string}} [opts]
+ * @param {{push?: any, readback?: string, topic?: string}} [opts]
  */
-function publishRunner({ push, readback = 'query-stack.txt' } = {}) {
+function publishRunner({ push, readback = 'query-stack.txt', topic = 'query-empty.txt' } = {}) {
   const c1 = 'a'.repeat(40);
   const record = [c1, c1, BASE, 'Ada', 'ada@example.com', '1785600000 +0000', 'Ada', 'ada@example.com',
     '1785600000 +0000', `Split the queue reader out of the daemon\n\nChange-Id: I${c1}\n`].join('\0') + '\0';
@@ -475,6 +476,10 @@ function publishRunner({ push, readback = 'query-stack.txt' } = {}) {
     {
       match: (f, a) => f === 'git' && a.includes('push'),
       result: push ?? ((_f, a) => ({ stdout: `To x\n*\t${a.at(-1)}\t[new reference]\nDone\n` })),
+    },
+    {
+      match: (f, a) => f === 'ssh' && String(a.at(-2)).includes('status:open'),
+      result: { stdout: fixture(topic) },
     },
     { match: (f) => f === 'ssh', result: { stdout: fixture(readback) } },
   ]);
@@ -509,6 +514,28 @@ test('publish follows the push with the changes to watch, and a stack with its t
     "Run `gerrit-axi status --query topic:stack-of-three` for the stack as the server lists it",
     'Run `gerrit-axi submit <change>` for a change the server marks submittable: 200101',
   ]);
+});
+
+test('a stack publish that left open changes in its topic names them, and never abandons one', async () => {
+  // HEAD carries only 200101's commit; the topic still holds 200102 and 200103.
+  const runner = publishRunner({ topic: 'query-stack.txt' });
+  const { code, document } = await publishJson(
+    ['publish', '--stack', '--topic', 'stack-of-three', '--host', 'review.example.org'], runner);
+  assert.equal(code, EXIT.ok, JSON.stringify(document));
+  assert.deepEqual(document.help, [
+    'Run `gerrit-axi show 200101 --comments --host review.example.org` to follow the review',
+    'Run `gerrit-axi status --query topic:stack-of-three --host review.example.org`'
+      + ' for the stack as the server lists it',
+    'Run `gerrit-axi show 200102 200103 --host review.example.org` for the open changes in topic'
+      + ' stack-of-three whose commits are no longer on HEAD (left_behind); abandon each one dropped'
+      + ' on purpose, since a server that submits topics whole would merge it too',
+    'Run `gerrit-axi submit <change> --host review.example.org` for a change the server marks submittable: 200101',
+  ]);
+  // One push, and every other call to the server a read.
+  assert.equal(runner.calls.filter((c) => c.file === 'git' && c.args.includes('push')).length, 1);
+  for (const call of runner.calls.filter((c) => c.file === 'ssh')) {
+    assert.ok(call.args.includes('query'), `only queries reach the server: ${call.args.join(' ')}`);
+  }
 });
 
 test('a squash that made a patch set is followed by the message that says what it changed', async () => {

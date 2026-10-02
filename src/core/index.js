@@ -74,6 +74,7 @@ export {
   deriveMessages,
   deriveReadiness,
   deriveVotes,
+  fillNeededByCurrency,
   normalizeChange,
   queryChangeDetails,
   queryChangePage,

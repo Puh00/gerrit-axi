@@ -12,7 +12,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { deriveMessages, deriveVotes, normalizeChange, queryChangeDetails } from '../src/core/changes.js';
+import {
+  deriveMessages,
+  deriveVotes,
+  fillNeededByCurrency,
+  normalizeChange,
+  queryChangeDetails,
+} from '../src/core/changes.js';
 import { parseQueryOutput } from '../src/core/ssh.js';
 import { Session } from '../src/core/session.js';
 import { EXIT, main } from '../src/cli/main.js';
@@ -119,6 +125,89 @@ test('a server that does not say whether a dependency is current gets null, not 
   });
   assert.equal(change.dependsOn[0].isCurrentPatchSet, null);
   assert.equal(change.dependsOn[0].number, 2, 'a string change number is coerced');
+});
+
+test('a dependent is current when its patch set is that change\'s current one, read off changes in hand', async () => {
+  const runner = fakeRunner([]);
+  const session = new Session({ config: /** @type {any} */ ({ host: 'gerrit.example.com', port: 29418, user: 'ada' }),
+    env: {}, runner });
+  const parent = normalizeChange({
+    project: 'acme/one',
+    number: 1,
+    currentPatchSet: { number: '3', revision: 'a'.repeat(40), ref: 'refs/changes/01/1/3' },
+    neededBy: [
+      { number: 2, revision: 'b'.repeat(40), ref: 'refs/changes/02/2/1' },
+      { number: 2, revision: 'c'.repeat(40), ref: 'refs/changes/02/2/2' },
+      { number: 3, revision: 'd'.repeat(40), ref: 'refs/changes/03/3/1', isCurrentPatchSet: false },
+    ],
+  });
+  const child = normalizeChange({
+    project: 'acme/one',
+    number: 2,
+    currentPatchSet: { number: '2', revision: 'c'.repeat(40), ref: 'refs/changes/02/2/2' },
+  });
+
+  const [filled, untouched] = await fillNeededByCurrency(session, [parent, child]);
+
+  assert.deepEqual(filled.neededBy.map((d) => [d.number, d.ref, d.isCurrentPatchSet]), [
+    [2, 'refs/changes/02/2/1', false],
+    [2, 'refs/changes/02/2/2', true],
+    [3, 'refs/changes/03/3/1', false],
+  ], 'an outdated patch set is kept and marked; a flag the server sent is kept as sent');
+  assert.deepEqual(untouched, child);
+  assert.equal(runner.calls.length, 0, 'every dependent left unflagged was in hand, so nothing is asked');
+});
+
+test('a dependent not in hand is looked up in one query, and one the server does not return stays null', async () => {
+  const runner = fakeRunner([{
+    match: (f) => f === 'ssh',
+    result: {
+      stdout: `${JSON.stringify({
+        project: 'acme/one',
+        number: 2,
+        currentPatchSet: { number: '1', revision: 'b'.repeat(40), ref: 'refs/changes/02/2/1' },
+      })}\n{"type":"stats","rowCount":1}\n`,
+    },
+  }]);
+  const session = new Session({ config: /** @type {any} */ ({ host: 'gerrit.example.com', port: 29418, user: 'ada' }),
+    env: {}, runner });
+  const parent = normalizeChange({
+    project: 'acme/one',
+    number: 1,
+    neededBy: [
+      { number: 2, revision: 'b'.repeat(40), ref: 'refs/changes/02/2/1' },
+      { number: 9, revision: 'e'.repeat(40), ref: 'refs/changes/09/9/4' },
+    ],
+  });
+
+  const [filled] = await fillNeededByCurrency(session, [parent]);
+
+  assert.deepEqual(filled.neededBy.map((d) => d.isCurrentPatchSet), [true, null]);
+  assert.equal(runner.calls.length, 1);
+  assert.ok(runner.calls[0].args.includes('(change:2 OR change:9)'), runner.calls[0].args.join(' '));
+});
+
+test('a failed lookup of dependents not in hand leaves them null instead of failing', async () => {
+  const runner = fakeRunner([{
+    match: (f) => f === 'ssh',
+    result: { code: 255, stderr: 'ssh: connect to host gerrit.example.com port 29418: Connection refused\n' },
+  }]);
+  const session = new Session({ config: /** @type {any} */ ({ host: 'gerrit.example.com', port: 29418, user: 'ada' }),
+    env: {}, runner });
+  const parent = normalizeChange({
+    project: 'acme/one',
+    number: 1,
+    currentPatchSet: { number: '1', revision: 'a'.repeat(40), ref: 'refs/changes/01/1/1' },
+    neededBy: [
+      { number: 2, revision: 'b'.repeat(40), ref: 'refs/changes/02/2/1' },
+      { number: 3, revision: 'c'.repeat(40), ref: 'refs/changes/03/3/2', isCurrentPatchSet: true },
+    ],
+  });
+
+  const [filled] = await fillNeededByCurrency(session, [parent]);
+
+  assert.deepEqual(filled.neededBy.map((d) => [d.number, d.isCurrentPatchSet]), [[2, null], [3, true]]);
+  assert.equal(runner.calls.length, 1);
 });
 
 test('queryChangeDetails asks the server for the cover messages and the dependencies', async () => {

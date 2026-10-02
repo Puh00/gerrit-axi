@@ -308,6 +308,90 @@ test('a stack whose commits all carry a Change-Id is pushed as it stands, and th
   assert.deepEqual(result.published.map((p) => p.stamped), [false, false]);
 });
 
+test('a stack reports the open changes its topic still holds for commits no longer on HEAD', async () => {
+  // A three-commit stack, republished after its middle commit was dropped.
+  const [c1, c3] = ['a'.repeat(40), 'c'.repeat(40)];
+  const [id1, id2, id3] = ['1', '2', '3'].map((x) => `I${x.repeat(40)}`);
+  const runner = fakeRepo({
+    head: c3,
+    log: logRecord({ sha: c1, parent: BASE, message: `One\n\nChange-Id: ${id1}\n` })
+      + logRecord({ sha: c3, parent: c1, message: `Three\n\nChange-Id: ${id3}\n` }),
+    routes: [{
+      match: (/** @type {string} */ f, /** @type {string[]} */ a) => f === 'ssh'
+        && a.includes('project:acme/apps/widget-console branch:main topic:stack-of-three status:open'),
+      result: {
+        stdout: `${[
+          changeRowJson(200101, id1, c1),
+          changeRowJson(200102, id2, 'b'.repeat(40), 2),
+          changeRowJson(200103, id3, c3),
+          '{"type":"stats","rowCount":3}',
+        ].join('\n')}\n`,
+      },
+    }],
+    readback: [changeRowJson(200101, id1, c1), changeRowJson(200103, id3, c3)],
+  });
+  const session = new Session({ config: CONFIG, runner, cwd: '/work' });
+
+  const result = await publishChanges(session, { shape: 'stack', topic: 'stack-of-three' });
+
+  assert.deepEqual(result.leftBehind?.map((c) => [c.number, c.id, c.currentPatchSet?.number]), [
+    [200102, id2, 2],
+  ]);
+  assert.equal(result.leftBehindError, null);
+  // Reported, never acted on: the one push is the only write.
+  assert.equal(gitCalls(runner, 'push').length, 1);
+  assert.equal(runner.calls.filter((c) => c.file === 'ssh').length, 2);
+});
+
+test('a stack whose topic holds nothing else reports an empty left-behind list, and a squash none', async () => {
+  const c1 = 'a'.repeat(40);
+  const id = `I${'1'.repeat(40)}`;
+  const runner = fakeRepo({
+    head: c1,
+    log: logRecord({ sha: c1, parent: BASE, message: `Only\n\nChange-Id: ${id}\n` }),
+    readback: [changeRowJson(200101, id, c1)],
+  });
+  const session = new Session({ config: CONFIG, runner, cwd: '/work' });
+
+  const stack = await publishChanges(session, { shape: 'stack', topic: 'stack-of-three' });
+  assert.deepEqual(stack.leftBehind, [], 'the topic query returned only the change just published');
+  assert.equal(stack.leftBehindError, null);
+
+  const squashRunner = fakeRepo({
+    head: c1,
+    log: logRecord({ sha: c1, parent: BASE, message: `Only\n\nChange-Id: ${id}\n` }),
+    readback: [changeRowJson(200101, id, c1)],
+  });
+  const squash = await publishChanges(new Session({ config: CONFIG, runner: squashRunner, cwd: '/work' }),
+    { shape: 'squash' });
+  assert.equal(squash.leftBehind, null);
+  assert.equal(squash.leftBehindError, null);
+  assert.equal(squashRunner.calls.filter((c) => c.file === 'ssh').length, 1, 'a squash has no topic to ask');
+});
+
+test('a stack whose topic cannot be asked is still published, with the failure as a warning', async () => {
+  const c1 = 'a'.repeat(40);
+  const id = `I${'1'.repeat(40)}`;
+  const runner = fakeRepo({
+    head: c1,
+    log: logRecord({ sha: c1, parent: BASE, message: `Only\n\nChange-Id: ${id}\n` }),
+    routes: [{
+      match: (/** @type {string} */ f, /** @type {string[]} */ a) => f === 'ssh'
+        && a.some((word) => word.includes('status:open')),
+      result: { code: 255, stderr: 'ssh: connect to host gerrit.example.com port 29418: Connection refused\n' },
+    }],
+    readback: [changeRowJson(200101, id, c1)],
+  });
+  const session = new Session({ config: CONFIG, runner, cwd: '/work' });
+
+  const result = await publishChanges(session, { shape: 'stack', topic: 'stack-of-three' });
+
+  assert.equal(result.published[0].change?.number, 200101);
+  assert.equal(result.leftBehind, null, 'unknown, not empty');
+  assert.equal(result.leftBehindError?.code, 'SSH_FAILED');
+  assert.match(String(result.leftBehindError?.message), /Connection refused/);
+});
+
 test('a squash is HEAD\'s tree on the base, under the oldest message, and only that one needs a Change-Id', async () => {
   const [c1, c2, c3] = ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40)];
   const oldest = `Split the reader out\n\nBody.\n\nChange-Id: I${'1'.repeat(40)}\n`;

@@ -19,6 +19,7 @@
  * decides what they look like.
  */
 
+import { GerritError } from './errors.js';
 import { sshQuery } from './ssh.js';
 
 /**
@@ -90,8 +91,10 @@ const BLOCKING_LABEL_STATUSES = new Set(['NEED', 'REJECT', 'IMPOSSIBLE']);
  * @property {string|null} revision
  * @property {string|null} ref
  * @property {boolean|null} isCurrentPatchSet  is `revision` still that change's
- *   current patch set? null when the server did not say. False on a `dependsOn`
- *   means this change is stacked on a parent revision that has been superseded.
+ *   current patch set? null when the server did not say, as it never does on a
+ *   `neededBy` entry until `fillNeededByCurrency` works it out. False on a
+ *   `dependsOn` means this change is stacked on a parent revision that has been
+ *   superseded; on a `neededBy`, that the entry is an outdated patch set.
  */
 
 /**
@@ -473,18 +476,76 @@ export async function queryChanges(session, spec, opts = {}) {
 /**
  * Everything the question "where does this change stand" needs, in one round
  * trip: the current patch set and its revision, who voted and when, the
- * dependencies with their `isCurrentPatchSet` flag, and the cover messages.
+ * dependencies with their `isCurrentPatchSet` flag, and the cover messages. A
+ * second query follows only for a dependent the first did not return (see
+ * `fillNeededByCurrency`).
  *
  * @param {import('./session.js').Session} session
  * @param {Array<number|string>} numbers
  * @returns {Promise<Change[]>} in the order the server returned them
  */
-export function queryChangeDetails(session, numbers) {
+export async function queryChangeDetails(session, numbers) {
   const list = [...numbers];
-  return queryChanges(session, { kind: 'changes', numbers: list }, {
+  const changes = await queryChanges(session, { kind: 'changes', numbers: list }, {
     limit: Math.max(1, list.length),
     include: ['comments', 'dependencies'],
   });
+  return fillNeededByCurrency(session, changes);
+}
+
+/**
+ * Fill `isCurrentPatchSet` on every `neededBy` entry the server left without
+ * one. Gerrit sets the flag on `dependsOn` only, and lists under `neededBy`
+ * every patch set of a child built on this revision, its outdated ones too, so
+ * without it a reader cannot tell the live dependents from the history.
+ *
+ * An entry is current when the patch-set number in its ref is the related
+ * change's current patch set. That is read off `changes` when the related
+ * change is among them, and otherwise asked for in one query naming the rest.
+ * An entry neither answers stays null, as the server left it, and so does every
+ * entry that query was for when it fails: the changes in hand are still worth
+ * returning without it.
+ *
+ * @param {import('./session.js').Session} session
+ * @param {Change[]} changes
+ * @returns {Promise<Change[]>} the same changes, in the same order
+ */
+export async function fillNeededByCurrency(session, changes) {
+  /** @type {Map<number, number|null>} */
+  const current = new Map(changes.map((change) => [change.number, change.currentPatchSet?.number ?? null]));
+  const unknown = [...new Set(changes
+    .flatMap((change) => change.neededBy)
+    .filter((dep) => dep.isCurrentPatchSet === null && dep.number !== null && !current.has(dep.number))
+    .map((dep) => /** @type {number} */ (dep.number)))];
+  if (unknown.length > 0) {
+    try {
+      const related = await queryChanges(session, { kind: 'changes', numbers: unknown }, { limit: unknown.length });
+      for (const change of related) current.set(change.number, change.currentPatchSet?.number ?? null);
+    } catch (err) {
+      if (!(err instanceof GerritError)) throw err;
+    }
+  }
+  return changes.map((change) => ({
+    ...change,
+    neededBy: change.neededBy.map((dep) => {
+      if (dep.isCurrentPatchSet !== null || dep.number === null) return dep;
+      const patchSet = patchSetOfRef(dep.ref);
+      const latest = current.get(dep.number) ?? null;
+      if (patchSet === null || latest === null) return dep;
+      return { ...dep, isCurrentPatchSet: patchSet === latest };
+    }),
+  }));
+}
+
+/**
+ * The patch-set number of a `refs/changes/NN/<change>/<patch set>` ref.
+ *
+ * @param {string|null} ref
+ * @returns {number|null}
+ */
+function patchSetOfRef(ref) {
+  const match = /^refs\/changes\/\d+\/\d+\/(\d+)$/.exec(String(ref ?? ''));
+  return match ? Number(match[1]) : null;
 }
 
 /**

@@ -300,6 +300,22 @@ export function publishedRow(entry) {
 }
 
 /**
+ * One row per open change a stack publish left behind in its topic: on the
+ * server, in the topic, but with a Change-Id no longer on HEAD.
+ *
+ * @param {import('../core/changes.js').Change} change
+ * @returns {Record<string, string|number|boolean|null>}
+ */
+export function leftBehindRow(change) {
+  return {
+    change: change.number,
+    subject: change.subject,
+    url: change.url,
+    patch_set: change.currentPatchSet?.number ?? null,
+  };
+}
+
+/**
  * One row per change a watch reports on: which change, what it is now, and where
  * to read it. `status` is null for a change the server stopped returning.
  *
