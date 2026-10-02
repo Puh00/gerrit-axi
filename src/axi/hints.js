@@ -35,6 +35,7 @@ export const COMMAND_TEMPLATES = [
   'gerrit-axi publish --squash',
   'gerrit-axi submit <change>',
   'gerrit-axi message <change>',
+  'gerrit-axi watch <change>...',
   'gerrit-axi setup hooks',
 ];
 

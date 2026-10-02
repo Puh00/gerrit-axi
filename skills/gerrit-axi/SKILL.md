@@ -1,6 +1,6 @@
 ---
 name: gerrit-axi
-description: "Work with Gerrit code review through the gerrit-axi CLI: what awaits you, where a change stands (labels, votes, what blocks submit), inline review comments with bots split from humans, publishing a branch as a stack or one change, posting a change message, and submitting. Use whenever a task touches a Gerrit change or a checkout whose origin is a Gerrit remote. It cannot vote."
+description: "Work with Gerrit code review through the gerrit-axi CLI: what awaits you, where a change stands (labels, votes, what blocks submit), inline review comments with bots split from humans, waiting for a vote, patch set, comment or status change on a change, publishing a branch as a stack or one change, posting a change message, and submitting. Use whenever a task touches a Gerrit change or a checkout whose origin is a Gerrit remote. It cannot vote."
 user-invocable: false
 ---
 
@@ -42,6 +42,8 @@ gerrit-axi publish --stack --topic <t>   each commit on HEAD becomes a change
 gerrit-axi publish --squash          the commits on HEAD become one change
 gerrit-axi submit <change>           ask the server to submit one change
 gerrit-axi message <change>          post one change message, text on stdin or --file
+gerrit-axi watch <change>...         wait for a vote, patch set, comment or status change
+    --timeout <secs> --since <file>  give up after a while; resume from a saved record
 gerrit-axi setup hooks               opt in to a dashboard summary at every session start
 ```
 
@@ -58,5 +60,9 @@ Run `gerrit-axi --help` for every option.
   for labels, votes and what blocks a change, or `status --fields` to add columns.
 - `publish` keeps every Change-Id a commit already has. Never edit or strip one:
   a new Change-Id makes a new change and orphans the review.
+- `watch` blocks until something changes, so run it in the background. It
+  exits 0 with what changed and who did it, or 6 when `--timeout` passed with
+  nothing changed. Save its output and pass that file to the next watch with
+  `--since`, so a restart neither misses nor repeats a change.
 - Bodies over 1000 characters are cut, with `truncated: true` on the row; add
   `--full` for the whole text.

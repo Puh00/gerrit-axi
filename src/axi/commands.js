@@ -9,13 +9,16 @@
  * following a nine-change stack must not need nine invocations, and `gerrit
  * query` answers about a whole list in one round trip anyway.
  *
+ * `watch` is the one operation that waits: it polls the changes named until
+ * something happens on one of them, then answers once.
+ *
  * The three writes are `publish`, `submit` and `message`, and there is no fourth:
  * nothing here records a vote, writes an inline comment, or sets reviewers.
  *
  * A document carries `help[]` -- the next steps, as complete commands -- only
- * where the next step is not obvious: after a list, after a write, and whenever
- * something was held back (a page the server cut, a message list capped by
- * `--messages`, a body cut to its preview). A detail view that answers the
+ * where the next step is not obvious: after a list, after a write, after a
+ * watch, and whenever something was held back (a page the server cut, a message
+ * list capped by `--messages`, a body cut to its preview). A detail view that answers the
  * question whole, or a confirmation, carries none. The lines are built by
  * hints.js and are never spelled here.
  */
@@ -33,12 +36,15 @@ import { listComments } from '../core/comments.js';
 import { postChangeMessage } from '../core/message.js';
 import { publishChanges } from '../core/publish.js';
 import { submitChange } from '../core/submit.js';
+import { WATCH_DEFAULT_INTERVAL_SECONDS, WATCH_MIN_INTERVAL_SECONDS, watchChanges } from '../core/watch.js';
+import { encodeBaseline, readSince } from './baseline.js';
 import { changeNumbers, messageCount, positiveInt, statusFields } from './args.js';
 import { command, invocation, submittableHint, truncationHint } from './hints.js';
 import { hookCommand, tildify } from './setup.js';
 import {
   changeRow,
   commentRows,
+  deltaRow,
   dependencyRows,
   entryRow,
   labelRows,
@@ -47,6 +53,7 @@ import {
   publishedRow,
   sectionRow,
   voteRows,
+  watchedRow,
 } from './records.js';
 import { UsageError } from './output.js';
 
@@ -59,6 +66,9 @@ import { UsageError } from './output.js';
  *           builds the session, for an operation that must not fail when none resolves
  * @property {NodeJS.ProcessEnv} [env]
  * @property {string} [execPath]            this binary, as a hook would name it
+ * @property {string} [cwd]                 where a relative `--since` file is read from
+ * @property {(ms: number) => Promise<void>} [sleep]  what `watch` waits on
+ * @property {() => number} [now]           the clock `watch` reads, epoch ms
  */
 
 /** Rows the dashboard shows per section unless `--rows` says otherwise. */
@@ -783,6 +793,65 @@ export async function opMessage({ session, args, stdin }) {
       `Run \`${command(['show', posted.change, '--messages', 'all'], args.overrides)}\``
         + ' for the conversation including this message',
     ],
+  };
+}
+
+/**
+ * `watch` -- wait until something happens on any of the changes named, then
+ * print one record saying what and who: a vote added, changed or removed, a new
+ * patch set, new cover messages or inline comments, a status such as MERGED or
+ * ABANDONED. Nothing changed by `--timeout` is the same record with
+ * `changed: false`, and exit 6 rather than 0, so a caller can tell the two apart
+ * without parsing.
+ *
+ * Either record carries `baseline`, the state it ended at. `--since` takes it
+ * back, so the next watch compares against exactly that: a change that landed
+ * while no watch was running is reported at once, and none is reported twice.
+ *
+ * @param {Ctx} ctx
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export async function opWatch({ session, args, cwd = process.cwd(), sleep, now }) {
+  const { positional, flags, overrides } = args;
+  const numbers = [...new Set(changeNumbers(positional))];
+  if (numbers.length === 0) {
+    throw new UsageError('watch needs at least one change number', undefined,
+      [`Run \`${command(['watch', '<change>...', '[--timeout <secs>]'], overrides)}\``]);
+  }
+  const interval = positiveInt(flags['--interval'], WATCH_DEFAULT_INTERVAL_SECONDS, '--interval');
+  if (interval < WATCH_MIN_INTERVAL_SECONDS) {
+    throw new UsageError(`--interval must be at least ${WATCH_MIN_INTERVAL_SECONDS} seconds, got: ${interval}`);
+  }
+  const timeout = typeof flags['--timeout'] === 'string' ? positiveInt(flags['--timeout'], 0, '--timeout') : null;
+  const { host } = session.config;
+  const since = typeof flags['--since'] === 'string' ? readSince(flags['--since'], host, cwd) : null;
+
+  const result = await watchChanges(session, numbers, {
+    intervalMs: interval * 1000,
+    timeoutMs: timeout === null ? null : timeout * 1000,
+    since,
+    ...(sleep ? { sleep } : {}),
+    ...(now ? { now } : {}),
+  });
+
+  const again = `Run \`${invocation('watch', args, { set: { '--since': '<baseline>' } })}\``;
+  const help = result.changed
+    ? [
+      `Run \`${command(['show', ...result.changes.map((c) => c.number), '--comments'], overrides)}\``
+        + ' for the full state of what changed',
+      `${again} to wait for the next change; <baseline> is this record's baseline, or a file holding this record`,
+    ]
+    : [`${again} to keep waiting from here; <baseline> is this record's baseline, or a file holding this record`];
+  return {
+    ok: true,
+    op: 'watch',
+    changed: result.changed,
+    count: result.changes.length,
+    polls: result.polls,
+    baseline: encodeBaseline(host, result.baseline),
+    changes: result.changes.map(watchedRow),
+    deltas: result.deltas.map(deltaRow),
+    help,
   };
 }
 

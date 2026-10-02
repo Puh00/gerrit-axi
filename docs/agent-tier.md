@@ -3,7 +3,8 @@
 `gerrit-axi` is the second binary. It imports the core library and prints
 records; nothing in it renders a table, and nothing in it reads one. Same
 transport, same readiness oracle, same three-tier configuration, same exit
-codes — a different output contract.
+codes plus one, `6`, for a [watch](#watching-changes) that timed out — a
+different output contract.
 
 ```text
 gerrit-axi                             your dashboard: your turn, work in progress,
@@ -38,6 +39,11 @@ gerrit-axi submit <change>             ask the server to submit one change
 
 gerrit-axi message <change>            post one change-level message on the current patch set
     --file <path>                      read the text from a file instead of stdin
+
+gerrit-axi watch <change>...           wait until something changes on any change named
+    --interval <secs>                  seconds between polls (default 60, at least 15)
+    --timeout <secs>                   give up after this long, with exit 6
+    --since <baseline>                 start from an earlier record's baseline, or a file holding it
 
 gerrit-axi setup hooks                 opt in: run the ambient view at every agent session start
     --remove                           take those hooks out again
@@ -141,8 +147,8 @@ help[2]: Run `gerrit-axi show <change>... --comments` for the full review state 
 
 A document ends with `help[]`, the next steps as complete commands, only where
 the next step is not obvious: after a list (`status`), after a write (`publish`,
-`message`, a `submit` the server did not report as merged), and whenever
-something was held back. A detail view that answers whole, such as `show`, and a
+`message`, a `submit` the server did not report as merged), after a `watch`, and
+whenever something was held back. A detail view that answers whole, such as `show`, and a
 confirmation, such as a merged `submit`, carry none, and the key is absent
 rather than empty. A failure's `help[]` is the command that fixes or diagnoses it,
 when one exists; it never says "see `--help`".
@@ -446,6 +452,78 @@ server has and the record names it. A change the server does not return is a
 `NOT_FOUND` error record; a refusal by Gerrit — a closed change, a missing
 permission — is `MESSAGE_REFUSED`, in the server's words. Inline, line-anchored
 comments, replies to threads, and reviewers are not part of this command.
+
+## Watching changes
+
+`watch <change>...` waits until something happens on any of the changes named,
+then prints one record and exits. A supervisor runs it in the background and is
+woken once per real change, instead of re-reading the changes itself:
+
+```console
+$ gerrit-axi watch 200102 200103
+ok: true
+op: watch
+changed: true
+count: 1
+polls: 4
+baseline: w1.eyJoIjoiZ2Vycml0LmV4YW1wbGUuY29tIiwiYyI6W3sibiI6MjAwMTAyLC...
+changes[1]{change,subject,status,patch_set,url}:
+  200102,Give the queue reader its own retry ceiling,NEW,3,"https://gerrit.example.com/c/acme/apps/widget-console/+/200102"
+deltas[4]{change,kind,label,from,to,by}:
+  200102,patch_set,null,2,3,ada
+  200102,vote_added,Xylophone-Gate,null,1,buildbot
+  200102,vote_removed,Quokka-Review,2,null,grace
+  200102,messages,null,3,5,"ada,buildbot"
+help[2]: Run `gerrit-axi show 200102 --comments` for the full state of what changed,"Run `gerrit-axi watch 200102 200103 --since <baseline>` to wait for the next change; <baseline> is this record's baseline, or a file holding this record"
+```
+
+`changes` has a row for each change that changed and `deltas` has a row for each
+thing that changed on it, joined on `change`; `polls` is how many times the
+server was asked:
+
+| `kind` | `from` → `to` | `by` |
+| --- | --- | --- |
+| `vote_added`, `vote_changed`, `vote_removed` | the vote's value, `null` where there is none; `label` names the label | the voter |
+| `patch_set` | the current patch set number | its uploader |
+| `messages` | how many cover messages there are | the authors of the new ones |
+| `comments` | how many inline comments there are | the authors of the new ones |
+| `status` | `NEW`, `MERGED`, `ABANDONED`, or `null` once the server stops returning the change | the author of the newest new cover message, which is the account Gerrit records a merge or an abandon under |
+
+`by` is `null` when the server names nobody. Votes are the current patch set's,
+so a new patch set that a vote did not carry over to shows that vote removed. A
+vote of 0 counts as none: Gerrit lists a newly added reviewer with 0, and a vote
+taken back as 0. Messages and comments are counted rather than listed; `show
+--messages` and `comments` read them.
+
+Each poll is one `gerrit query` for every change named, with the cover messages
+included. Inline comments need one REST call per change, and the stored token
+`comments` needs, so they are read when the watch starts and afterwards only for
+a change whose last update has moved.
+Polls are 60 seconds apart unless `--interval` says otherwise, and never closer
+than 15. This version polls because `gerrit stream-events` needs a capability
+an ordinary account often lacks; the records do not depend on that, so a
+push-based source could produce the same ones.
+
+`--timeout <secs>` ends the wait. Nothing changed by then is the same record with
+`changed: false`, empty `changes` and `deltas`, and exit 6, so the exit code
+alone tells the two outcomes apart. Without it the watch waits until something
+changes. A poll that cannot reach the server is tried again at the next
+interval, up to three in a row; the first poll must succeed, and a change it does
+not return is a `NOT_FOUND` error record.
+
+Every record carries `baseline`, the state it stopped at. `--since` takes it
+back: the token itself, or a file holding the token or a whole earlier record in
+either format, so a caller can redirect a watch's output to a file and pass that
+file to the next watch. The first poll is then compared with the baseline at
+once, so a change that landed while no watch was running is reported rather than
+missed, and one already reported is not reported again. A change the baseline
+does not cover starts from that first poll. A baseline from another server is
+refused.
+
+```sh
+gerrit-axi watch 200102 200103 --timeout 3600 > last.toon
+gerrit-axi watch 200102 200103 --timeout 3600 --since last.toon > next.toon
+```
 
 ## Failures
 

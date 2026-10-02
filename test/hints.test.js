@@ -387,7 +387,7 @@ test('a usage error names the corrected call; an unknown option already has its 
   assert.equal(nope.document.code, 'BAD_USAGE');
   assert.equal(nope.document.help.length, 1);
   assert.match(nope.document.help[0], /^Run one of: `gerrit-axi`, `gerrit-axi status`, `gerrit-axi show <change>\.\.\.`, /);
-  assert.match(nope.document.help[0], /`gerrit-axi message <change>`, `gerrit-axi setup hooks`$/);
+  assert.match(nope.document.help[0], /`gerrit-axi message <change>`, `gerrit-axi watch <change>\.\.\.`, `gerrit-axi setup hooks`$/);
   assert.equal(nope.document.help[0].includes('--help'), false);
 });
 

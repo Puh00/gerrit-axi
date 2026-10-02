@@ -10,7 +10,7 @@
  * for the global options rather than repeating their descriptions.
  */
 
-export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review state as records, publish, message, and submit
+export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review state as records, watch, publish, message, and submit
 
 usage: gerrit-axi [<command>] [options]
        gerrit-axi <command> --help     that command's options and examples
@@ -31,7 +31,8 @@ is close.
 
 A record ends with help[] -- the next steps, as complete commands carrying this
 call's --host and its siblings -- only where the next step is not obvious: after
-a list, after publish, submit or message, and whenever something was held back.
+a list, after publish, submit, message or watch, and whenever something was held
+back.
 A detail view or a confirmation carries none. A failure's help[] is the command
 that fixes or diagnoses it, when there is one.
 
@@ -74,6 +75,15 @@ commands, and the options each one takes:
                               current patch set; the text is read from stdin
       --file <path>           ...or from this file. Never from argv. No label,
                               no vote: the record names the patch set it landed on
+  watch <change>...           wait until a vote, a patch set, a cover message, an
+                              inline comment or the status changes on any change
+                              named, then print one record of what and who
+      --interval <secs>       seconds between polls (default 60, at least 15)
+      --timeout <secs>        give up after this long: the same record with
+                              changed: false, and exit 6 (default: wait on)
+      --since <baseline>      compare against an earlier record's baseline, or a
+                              file holding it or the whole record, so a restarted
+                              watch neither misses nor repeats a change
   setup hooks                 opt in to session integration: register
                               'gerrit-axi dashboard --ambient' as a session-start
                               hook for Claude Code, Codex and OpenCode, in your
@@ -108,7 +118,7 @@ current directory first, then from GERRIT_HOST / GERRIT_USER / GERRIT_PORT, then
 from the config file. There is no built-in default host.
 
 Exit codes: 0 success, 1 other error, 2 usage, 3 configuration, 4 authentication,
-5 transport.
+5 transport, 6 watch reached --timeout with nothing changed.
 
 publish keeps every Change-Id a commit already carries, verbatim: the same
 Change-Id is what makes a push a new patch set of the same change. A commit
@@ -301,6 +311,33 @@ global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
 examples:
   echo 'Rebased onto the fix; ready for another look.' | gerrit-axi message 12345
   gerrit-axi message 12345 --file reply.txt`,
+  watch: `gerrit-axi watch - wait for something to happen on any of the changes named
+
+usage: gerrit-axi watch <change>... [options]
+
+arguments:
+  <change>...             one or more change numbers (required)
+
+Polls every --interval seconds, one gerrit query for all of them, and exits with
+one record as soon as any has a vote added, changed or removed, a new patch set,
+new cover messages or inline comments, or a new status such as MERGED or
+ABANDONED: the changes table says which, and deltas says what and who. The
+record's baseline is where it stopped; pass it back with --since.
+
+options:
+  --interval <secs>       seconds between polls (default 60, at least 15)
+  --timeout <secs>        give up after this long with changed: false and exit
+                          6 (default: wait until something changes)
+  --since <baseline>      compare against this baseline from an earlier record,
+                          or a file holding it or that whole record, at once
+
+global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
+  --rest-base <u> (see gerrit-axi --help)
+
+examples:
+  gerrit-axi watch 12345 12346
+  gerrit-axi watch 12345 --timeout 3600 > last.toon
+  gerrit-axi watch 12345 --since last.toon`,
   setup: `gerrit-axi setup - opt in to session integration, in your own user config
 
 usage: gerrit-axi setup hooks [--remove]

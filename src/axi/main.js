@@ -22,6 +22,7 @@ import {
   opShow,
   opStatus,
   opSubmit,
+  opWatch,
 } from './commands.js';
 import { COMMAND_HELP, USAGE } from './help.js';
 import { COMMAND_TEMPLATES, errorHelp } from './hints.js';
@@ -37,6 +38,8 @@ export const EXIT = {
   config: 3,
   auth: 4,
   transport: 5,
+  /** `watch` reached its --timeout with nothing changed: a record, not a failure. */
+  timeout: 6,
 };
 
 
@@ -50,6 +53,7 @@ const OPS = {
   publish: opPublish,
   submit: opSubmit,
   message: opMessage,
+  watch: opWatch,
   setup: opSetup,
 };
 
@@ -58,9 +62,10 @@ const OPS = {
  * @param {{cwd?: string, env?: NodeJS.ProcessEnv, stdin?: NodeJS.ReadStream,
  *          stdout?: NodeJS.WriteStream, stderr?: NodeJS.WriteStream,
  *          runner?: import('../core/exec.js').Runner, fetchImpl?: typeof fetch,
- *          execPath?: string}} [io]
+ *          execPath?: string, sleep?: (ms: number) => Promise<void>, now?: () => number}} [io]
  *          `stderr` is accepted and never written: a failure is a record on stdout.
- *          `execPath` is this binary, which `setup hooks` registers.
+ *          `execPath` is this binary, which `setup hooks` registers. `sleep` and
+ *          `now` are the clock `watch` waits on.
  * @returns {Promise<number>} exit code
  */
 export async function main(argv, io = {}) {
@@ -72,6 +77,8 @@ export async function main(argv, io = {}) {
     runner,
     fetchImpl,
     execPath = process.argv[1] ?? '',
+    sleep,
+    now,
   } = io;
 
   const [first, ...tail] = argv;
@@ -144,9 +151,12 @@ export async function main(argv, io = {}) {
     // connect when and if they need to; every other command needs a server.
     const lazy = op === 'setup' || (op === 'dashboard' && args.flags['--ambient'] === true);
     const session = lazy ? undefined : await connect();
-    const ctx = { session: /** @type {any} */ (session), args, stdin, connect, env, execPath };
-    out(serialize(await OPS[op](ctx), { json: args.json }));
-    return EXIT.ok;
+    const ctx = {
+      session: /** @type {any} */ (session), args, stdin, connect, env, execPath, cwd, sleep, now,
+    };
+    const document = await OPS[op](ctx);
+    out(serialize(document, { json: args.json }));
+    return op === 'watch' && document.changed === false ? EXIT.timeout : EXIT.ok;
   } catch (error) {
     return fail(error, op);
   }
