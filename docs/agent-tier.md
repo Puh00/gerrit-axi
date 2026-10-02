@@ -129,7 +129,8 @@ change, its outdated ones too, so `show` fills it: `true` when the patch set in
 the row's `ref` is that change's current one, `false` for one since replaced,
 which stays in the table as history. A dependent among the changes named is read
 from the same answer; any other is asked for in one more query, and one the
-server does not return keeps `null`.
+server does not return keeps `null`, as does every such dependent when that
+query fails, which does not fail `show`.
 
 `status` is the list view, so its rows are short: `change`, `subject`, `status`
 and `submit`, enough to pick a change, and no `labels` or `votes` table.

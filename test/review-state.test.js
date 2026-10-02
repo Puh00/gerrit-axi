@@ -187,6 +187,29 @@ test('a dependent not in hand is looked up in one query, and one the server does
   assert.ok(runner.calls[0].args.includes('(change:2 OR change:9)'), runner.calls[0].args.join(' '));
 });
 
+test('a failed lookup of dependents not in hand leaves them null instead of failing', async () => {
+  const runner = fakeRunner([{
+    match: (f) => f === 'ssh',
+    result: { code: 255, stderr: 'ssh: connect to host gerrit.example.com port 29418: Connection refused\n' },
+  }]);
+  const session = new Session({ config: /** @type {any} */ ({ host: 'gerrit.example.com', port: 29418, user: 'ada' }),
+    env: {}, runner });
+  const parent = normalizeChange({
+    project: 'acme/one',
+    number: 1,
+    currentPatchSet: { number: '1', revision: 'a'.repeat(40), ref: 'refs/changes/01/1/1' },
+    neededBy: [
+      { number: 2, revision: 'b'.repeat(40), ref: 'refs/changes/02/2/1' },
+      { number: 3, revision: 'c'.repeat(40), ref: 'refs/changes/03/3/2', isCurrentPatchSet: true },
+    ],
+  });
+
+  const [filled] = await fillNeededByCurrency(session, [parent]);
+
+  assert.deepEqual(filled.neededBy.map((d) => [d.number, d.isCurrentPatchSet]), [[2, null], [3, true]]);
+  assert.equal(runner.calls.length, 1);
+});
+
 test('queryChangeDetails asks the server for the cover messages and the dependencies', async () => {
   const runner = fakeRunner([
     { match: (f) => f === 'ssh', result: { stdout: fixture('query-detail.txt') } },

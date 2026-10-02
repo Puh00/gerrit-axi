@@ -19,6 +19,7 @@
  * decides what they look like.
  */
 
+import { GerritError } from './errors.js';
 import { sshQuery } from './ssh.js';
 
 /**
@@ -501,7 +502,9 @@ export async function queryChangeDetails(session, numbers) {
  * An entry is current when the patch-set number in its ref is the related
  * change's current patch set. That is read off `changes` when the related
  * change is among them, and otherwise asked for in one query naming the rest.
- * An entry neither answers stays null, as the server left it.
+ * An entry neither answers stays null, as the server left it, and so does every
+ * entry that query was for when it fails: the changes in hand are still worth
+ * returning without it.
  *
  * @param {import('./session.js').Session} session
  * @param {Change[]} changes
@@ -515,8 +518,12 @@ export async function fillNeededByCurrency(session, changes) {
     .filter((dep) => dep.isCurrentPatchSet === null && dep.number !== null && !current.has(dep.number))
     .map((dep) => /** @type {number} */ (dep.number)))];
   if (unknown.length > 0) {
-    const related = await queryChanges(session, { kind: 'changes', numbers: unknown }, { limit: unknown.length });
-    for (const change of related) current.set(change.number, change.currentPatchSet?.number ?? null);
+    try {
+      const related = await queryChanges(session, { kind: 'changes', numbers: unknown }, { limit: unknown.length });
+      for (const change of related) current.set(change.number, change.currentPatchSet?.number ?? null);
+    } catch (err) {
+      if (!(err instanceof GerritError)) throw err;
+    }
   }
   return changes.map((change) => ({
     ...change,
