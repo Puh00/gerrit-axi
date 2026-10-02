@@ -28,6 +28,10 @@
  *
  *     const [change] = await queryChangeDetails(session, [184458]);
  *
+ * ...and a wait until something happens on any of a list of changes, and what:
+ *
+ *     const { deltas, baseline } = await watchChanges(session, [184458, 184459]);
+ *
  * ...and the three writes, which are all there are -- nothing here can vote:
  *
  *     const publication = await publishChanges(session, { shape: 'stack', topic: 'retry' });
@@ -129,6 +133,17 @@ export {
 } from './publish.js';
 
 export { submitChange } from './submit.js';
+
+export {
+  WATCH_DEFAULT_INTERVAL_SECONDS,
+  WATCH_MAX_FAILED_POLLS,
+  WATCH_MIN_INTERVAL_SECONDS,
+  baselineOf,
+  diffChange,
+  observeChange,
+  observeChanges,
+  watchChanges,
+} from './watch.js';
 
 export { buildMessageArgs, postChangeMessage, quoteForGerrit } from './message.js';
 

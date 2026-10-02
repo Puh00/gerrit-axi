@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 
+import { encodeBaseline } from '../src/axi/baseline.js';
 import { EXIT, main } from '../src/axi/main.js';
 import { quoteForGerrit } from '../src/core/message.js';
 import { Session } from '../src/core/session.js';
@@ -125,6 +126,10 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
     { argv: ['show', '200101', '200102', '200103', '--comments'], log: '', head: c },
     { argv: ['comments', '200102', '200103'], log: '', head: c },
     { argv: ['auth', 'status'], log: '', head: c },
+    // A baseline the server has moved on from, so the watch reports at once.
+    { argv: ['watch', '200101', '200103', '--since', encodeBaseline('gerrit.example.com', [
+      { number: 200101, status: 'NEW', patchSet: 3, updated: null, votes: [], messages: 0, comments: 0 },
+    ])], log: '', head: c },
   ];
 
   /** @type {Array<{op: string, file: string, args: string[]}>} */

@@ -93,7 +93,8 @@ Global options: `--host`, `--user`, `--port`, `--rest-base`, `--no-color`,
 `-h/--help`, `-V/--version`.
 
 Exit codes: `0` success, `1` other error, `2` usage, `3` configuration, `4`
-authentication, `5` transport. `gerrit-axi` uses the same ones.
+authentication, `5` transport. `gerrit-axi` uses the same ones, and `6` when
+`watch` reaches its `--timeout` with nothing changed.
 
 The `gerrit` command has no `--json`, and will not grow one. Machine-readable
 output is what the second binary is for.
@@ -218,7 +219,7 @@ read -rs T && printf %s "$T" | gerrit auth login --stdin && unset T
 
 - [The agent tier](docs/agent-tier.md) — `gerrit-axi`'s records, next steps, the
   dashboard, session integration, inline comments, publishing, submitting, posting
-  a change message, and failures.
+  a change message, watching changes, and failures.
 - [Configuration](docs/configuration.md) — the three tiers: what is derived from
   the server, what from the repo, and the little that is configured.
 - [Architecture](docs/architecture.md) — the core library, the two binaries over

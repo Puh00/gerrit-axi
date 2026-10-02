@@ -298,3 +298,42 @@ export function publishedRow(entry) {
     current: entry.isCurrentPatchSet,
   };
 }
+
+/**
+ * One row per change a watch reports on: which change, what it is now, and where
+ * to read it. `status` is null for a change the server stopped returning.
+ *
+ * @param {import('../core/watch.js').Observation} observation
+ * @returns {Record<string, string|number|boolean|null>}
+ */
+export function watchedRow(observation) {
+  return {
+    change: observation.number,
+    subject: observation.subject,
+    status: observation.status,
+    patch_set: observation.patchSet,
+    url: observation.url,
+  };
+}
+
+/**
+ * One row per thing that changed, keyed on `change` and, for a vote, `label`.
+ * `from` and `to` are the old and new vote value, patch set number, status, or
+ * message or comment count; `by` is who did it, joined when several did, and
+ * null when the server names nobody; `reason` is why a vote was reset, null on
+ * every other row.
+ *
+ * @param {import('../core/watch.js').Delta} delta
+ * @returns {Record<string, string|number|boolean|null>}
+ */
+export function deltaRow(delta) {
+  return {
+    change: delta.change,
+    kind: delta.kind,
+    label: delta.label,
+    from: delta.from,
+    to: delta.to,
+    by: delta.by.length > 0 ? delta.by.join(',') : null,
+    reason: delta.reason,
+  };
+}

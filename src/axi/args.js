@@ -39,6 +39,7 @@ export const COMMAND_OPTIONS = {
   publish: { withValue: ['--topic', '--branch'], boolean: ['--stack', '--squash'] },
   submit: { withValue: [], boolean: [] },
   message: { withValue: ['--file'], boolean: [] },
+  watch: { withValue: ['--interval', '--timeout', '--since'], boolean: [] },
   setup: { withValue: [], boolean: ['--remove'] },
 };
 

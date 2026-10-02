@@ -7,6 +7,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/). Each release's section
 here is its GitHub Release notes, above the list of pull requests it merged.
 
+## [0.5.0]
+
+### Added
+
+- `gerrit-axi watch <change>...` polls the changes named and exits with one
+  record as soon as any of them changes: a vote added, changed or removed, a
+  vote reset by a new patch set, a new patch set, new cover messages or inline
+  comments, or a status such as `MERGED` or `ABANDONED`, each with who did it.
+  `--timeout <secs>` gives up with `changed: false` and exit 6; `--since` takes
+  an earlier record's `baseline`, or a file holding only it, so a restarted
+  watch neither misses nor repeats a change.
+  `--interval` sets the poll interval (default 60 seconds, at least 15).
+
 ## [0.4.0]
 
 ### Changed
@@ -80,6 +93,7 @@ here is its GitHub Release notes, above the list of pull requests it merged.
 - A user or host beginning with `-`, from any source including the `origin`
   remote, is refused rather than passed to ssh, which would read it as an option.
 
+[0.5.0]: https://github.com/slnkjthien/gerrit-axi/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/slnkjthien/gerrit-axi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/slnkjthien/gerrit-axi/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/slnkjthien/gerrit-axi/releases/tag/v0.2.0
