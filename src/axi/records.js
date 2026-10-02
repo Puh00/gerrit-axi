@@ -320,7 +320,8 @@ export function watchedRow(observation) {
  * One row per thing that changed, keyed on `change` and, for a vote, `label`.
  * `from` and `to` are the old and new vote value, patch set number, status, or
  * message or comment count; `by` is who did it, joined when several did, and
- * null when the server names nobody.
+ * null when the server names nobody; `reason` is why a vote was reset, null on
+ * every other row.
  *
  * @param {import('../core/watch.js').Delta} delta
  * @returns {Record<string, string|number|boolean|null>}
@@ -333,5 +334,6 @@ export function deltaRow(delta) {
     from: delta.from,
     to: delta.to,
     by: delta.by.length > 0 ? delta.by.join(',') : null,
+    reason: delta.reason,
   };
 }

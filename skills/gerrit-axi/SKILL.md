@@ -43,7 +43,7 @@ gerrit-axi publish --squash          the commits on HEAD become one change
 gerrit-axi submit <change>           ask the server to submit one change
 gerrit-axi message <change>          post one change message, text on stdin or --file
 gerrit-axi watch <change>...         wait for a vote, patch set, comment or status change
-    --timeout <secs> --since <file>  give up after a while; resume from a saved record
+    --timeout <secs> --since <base>  give up after a while; resume from a baseline
 gerrit-axi setup hooks               opt in to a dashboard summary at every session start
 ```
 
@@ -62,7 +62,8 @@ Run `gerrit-axi --help` for every option.
   a new Change-Id makes a new change and orphans the review.
 - `watch` blocks until something changes, so run it in the background. It
   exits 0 with what changed and who did it, or 6 when `--timeout` passed with
-  nothing changed. Save its output and pass that file to the next watch with
-  `--since`, so a restart neither misses nor repeats a change.
+  nothing changed. Pass the record's `baseline` to the next watch with
+  `--since`, as the token or a file holding only it, so a restart neither misses
+  nor repeats a change.
 - Bodies over 1000 characters are cut, with `truncated: true` on the row; add
   `--full` for the whole text.

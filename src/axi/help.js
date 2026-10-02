@@ -82,7 +82,7 @@ commands, and the options each one takes:
       --timeout <secs>        give up after this long: the same record with
                               changed: false, and exit 6 (default: wait on)
       --since <baseline>      compare against an earlier record's baseline, or a
-                              file holding it or the whole record, so a restarted
+                              file holding only that baseline, so a restarted
                               watch neither misses nor repeats a change
   setup hooks                 opt in to session integration: register
                               'gerrit-axi dashboard --ambient' as a session-start
@@ -319,25 +319,26 @@ arguments:
   <change>...             one or more change numbers (required)
 
 Polls every --interval seconds, one gerrit query for all of them, and exits with
-one record as soon as any has a vote added, changed or removed, a new patch set,
-new cover messages or inline comments, or a new status such as MERGED or
-ABANDONED: the changes table says which, and deltas says what and who. The
-record's baseline is where it stopped; pass it back with --since.
+one record as soon as any has a vote added, changed, removed or reset by a new
+patch set, a new patch set, new cover messages or inline comments, or a new
+status such as MERGED or ABANDONED: the changes table says which, and deltas
+says what and who. The record's baseline is where it stopped; pass it back with
+--since, or save it to a file and pass that.
 
 options:
   --interval <secs>       seconds between polls (default 60, at least 15)
   --timeout <secs>        give up after this long with changed: false and exit
                           6 (default: wait until something changes)
   --since <baseline>      compare against this baseline from an earlier record,
-                          or a file holding it or that whole record, at once
+                          or a file holding only that baseline, at once
 
 global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
   --rest-base <u> (see gerrit-axi --help)
 
 examples:
   gerrit-axi watch 12345 12346
-  gerrit-axi watch 12345 --timeout 3600 > last.toon
-  gerrit-axi watch 12345 --since last.toon`,
+  gerrit-axi watch 12345 --timeout 3600 --json | jq -r .baseline > last.baseline
+  gerrit-axi watch 12345 --since last.baseline`,
   setup: `gerrit-axi setup - opt in to session integration, in your own user config
 
 usage: gerrit-axi setup hooks [--remove]

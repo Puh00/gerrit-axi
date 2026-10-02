@@ -798,9 +798,9 @@ export async function opMessage({ session, args, stdin }) {
 
 /**
  * `watch` -- wait until something happens on any of the changes named, then
- * print one record saying what and who: a vote added, changed or removed, a new
- * patch set, new cover messages or inline comments, a status such as MERGED or
- * ABANDONED. Nothing changed by `--timeout` is the same record with
+ * print one record saying what and who: a vote added, changed, removed or
+ * reset, a new patch set, new cover messages or inline comments, a status such
+ * as MERGED or ABANDONED. Nothing changed by `--timeout` is the same record with
  * `changed: false`, and exit 6 rather than 0, so a caller can tell the two apart
  * without parsing.
  *
@@ -839,9 +839,9 @@ export async function opWatch({ session, args, cwd = process.cwd(), sleep, now }
     ? [
       `Run \`${command(['show', ...result.changes.map((c) => c.number), '--comments'], overrides)}\``
         + ' for the full state of what changed',
-      `${again} to wait for the next change; <baseline> is this record's baseline, or a file holding this record`,
+      `${again} to wait for the next change; <baseline> is this record's baseline, or a file holding only it`,
     ]
-    : [`${again} to keep waiting from here; <baseline> is this record's baseline, or a file holding this record`];
+    : [`${again} to keep waiting from here; <baseline> is this record's baseline, or a file holding only it`];
   return {
     ok: true,
     op: 'watch',

@@ -469,12 +469,12 @@ polls: 4
 baseline: w1.eyJoIjoiZ2Vycml0LmV4YW1wbGUuY29tIiwiYyI6W3sibiI6MjAwMTAyLC...
 changes[1]{change,subject,status,patch_set,url}:
   200102,Give the queue reader its own retry ceiling,NEW,3,"https://gerrit.example.com/c/acme/apps/widget-console/+/200102"
-deltas[4]{change,kind,label,from,to,by}:
-  200102,patch_set,null,2,3,ada
-  200102,vote_added,Xylophone-Gate,null,1,buildbot
-  200102,vote_removed,Quokka-Review,2,null,grace
-  200102,messages,null,3,5,"ada,buildbot"
-help[2]: Run `gerrit-axi show 200102 --comments` for the full state of what changed,"Run `gerrit-axi watch 200102 200103 --since <baseline>` to wait for the next change; <baseline> is this record's baseline, or a file holding this record"
+deltas[4]{change,kind,label,from,to,by,reason}:
+  200102,patch_set,null,2,3,ada,null
+  200102,vote_added,Xylophone-Gate,null,1,buildbot,null
+  200102,vote_reset,Quokka-Review,2,null,null,patch set 2 -> 3
+  200102,messages,null,3,5,"ada,buildbot",null
+help[2]: Run `gerrit-axi show 200102 --comments` for the full state of what changed,"Run `gerrit-axi watch 200102 200103 --since <baseline>` to wait for the next change; <baseline> is this record's baseline, or a file holding only it"
 ```
 
 `changes` has a row for each change that changed and `deltas` has a row for each
@@ -484,16 +484,19 @@ server was asked:
 | `kind` | `from` → `to` | `by` |
 | --- | --- | --- |
 | `vote_added`, `vote_changed`, `vote_removed` | the vote's value, `null` where there is none; `label` names the label | the voter |
+| `vote_reset` | the vote's value, then `null`; `label` names the label, and `reason` the patch set change that reset it | `null` |
 | `patch_set` | the current patch set number | its uploader |
 | `messages` | how many cover messages there are | the authors of the new ones |
 | `comments` | how many inline comments there are | the authors of the new ones |
 | `status` | `NEW`, `MERGED`, `ABANDONED`, or `null` once the server stops returning the change | the author of the newest new cover message, which is the account Gerrit records a merge or an abandon under |
 
-`by` is `null` when the server names nobody. Votes are the current patch set's,
-so a new patch set that a vote did not carry over to shows that vote removed. A
-vote of 0 counts as none: Gerrit lists a newly added reviewer with 0, and a vote
-taken back as 0. Messages and comments are counted rather than listed; `show
---messages` and `comments` read them.
+`by` is `null` when the server names nobody, and `reason` is `null` on every
+row but `vote_reset`. Votes are the current patch set's, so a vote gone in the
+same poll as a new patch set did not carry over to it: that is `vote_reset`,
+credited to no one, while a vote taken back on the same patch set is
+`vote_removed`, credited to the voter. A vote of 0 counts as none: Gerrit lists
+a newly added reviewer with 0, and a vote taken back as 0. Messages and comments
+are counted rather than listed; `show --messages` and `comments` read them.
 
 Each poll is one `gerrit query` for every change named, with the cover messages
 included. Inline comments need one REST call per change, and the stored token
@@ -512,17 +515,15 @@ interval, up to three in a row; the first poll must succeed, and a change it doe
 not return is a `NOT_FOUND` error record.
 
 Every record carries `baseline`, the state it stopped at. `--since` takes it
-back: the token itself, or a file holding the token or a whole earlier record in
-either format, so a caller can redirect a watch's output to a file and pass that
-file to the next watch. The first poll is then compared with the baseline at
-once, so a change that landed while no watch was running is reported rather than
-missed, and one already reported is not reported again. A change the baseline
-does not cover starts from that first poll. A baseline from another server is
-refused.
+back: the token itself, or a file holding only the token. The first poll is then
+compared with the baseline at once, so a change that landed while no watch was
+running is reported rather than missed, and one already reported is not
+reported again. A change the baseline does not cover starts from that first
+poll. A baseline from another server is refused.
 
 ```sh
-gerrit-axi watch 200102 200103 --timeout 3600 > last.toon
-gerrit-axi watch 200102 200103 --timeout 3600 --since last.toon > next.toon
+gerrit-axi watch 200102 200103 --timeout 3600 --json | jq -r .baseline > last.baseline
+gerrit-axi watch 200102 200103 --timeout 3600 --since last.baseline
 ```
 
 ## Failures

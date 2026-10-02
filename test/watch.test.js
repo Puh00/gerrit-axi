@@ -143,7 +143,7 @@ test('a vote cast after the baseline is reported with its label, value and voter
     change: 200101, subject: 'Split the queue reader out of the daemon', status: 'NEW', patch_set: 4, url: URL_200101,
   }]);
   assert.deepEqual(record.deltas, [
-    { change: 200101, kind: 'vote_added', label: 'Quokka-Review', from: null, to: 2, by: 'grace' },
+    { change: 200101, kind: 'vote_added', label: 'Quokka-Review', from: null, to: 2, by: 'grace', reason: null },
   ]);
   assert.match(record.baseline, /^w1\./);
 });
@@ -159,11 +159,11 @@ test('a vote changed from one value to another names the old and the new', async
 
   assert.equal(code, EXIT.ok);
   assert.deepEqual(JSON.parse(out).deltas, [
-    { change: 200101, kind: 'vote_changed', label: 'Quokka-Review', from: 1, to: -1, by: 'grace' },
+    { change: 200101, kind: 'vote_changed', label: 'Quokka-Review', from: 1, to: -1, by: 'grace', reason: null },
   ]);
 });
 
-test('a vote taken back to 0, or gone from the approvals, is a vote removed', async () => {
+test('a vote taken back to 0, or gone from the approvals, on the same patch set is a vote removed by the voter', async () => {
   const before = row({
     approvals: [
       { type: 'Quokka-Review', value: '2', grantedOn: 1785535000, by: GRACE },
@@ -179,8 +179,50 @@ test('a vote taken back to 0, or gone from the approvals, is a vote removed', as
 
   assert.equal(code, EXIT.ok);
   assert.deepEqual(JSON.parse(out).deltas, [
-    { change: 200101, kind: 'vote_removed', label: 'Quokka-Review', from: 2, to: null, by: 'grace' },
-    { change: 200101, kind: 'vote_removed', label: 'Xylophone-Gate', from: 1, to: null, by: 'alan' },
+    { change: 200101, kind: 'vote_removed', label: 'Quokka-Review', from: 2, to: null, by: 'grace', reason: null },
+    { change: 200101, kind: 'vote_removed', label: 'Xylophone-Gate', from: 1, to: null, by: 'alan', reason: null },
+  ]);
+});
+
+test('a vote gone with a new patch set is a reset credited to no one, naming the patch set change', async () => {
+  const before = row({
+    patchSet: 4,
+    approvals: [{ type: 'Quokka-Review', value: '2', grantedOn: 1785535000, by: GRACE }],
+  });
+  const after = row({ patchSet: 5, updated: 1785537000, uploader: ALAN });
+
+  const json = await watch(['watch', '200101', '--json'], { polls: [[before], [after]] });
+
+  assert.equal(json.code, EXIT.ok);
+  assert.deepEqual(JSON.parse(json.out).deltas, [
+    { change: 200101, kind: 'patch_set', label: null, from: 4, to: 5, by: 'alan', reason: null },
+    { change: 200101, kind: 'vote_reset', label: 'Quokka-Review', from: 2, to: null, by: null,
+      reason: 'patch set 4 -> 5' },
+  ]);
+
+  const toon = await watch(['watch', '200101'], { polls: [[before], [after]] });
+  assert.equal(toon.code, EXIT.ok);
+  assert.match(toon.out, /^deltas\[2\]\{change,kind,label,from,to,by,reason\}:$/m);
+  assert.match(toon.out, /^  200101,vote_reset,Quokka-Review,2,null,null,patch set 4 -> 5$/m);
+});
+
+test('a vote that changes value on a new patch set is still the voter re-voting', async () => {
+  const before = row({
+    patchSet: 4,
+    approvals: [{ type: 'Quokka-Review', value: '1', grantedOn: 1785535000, by: GRACE }],
+  });
+  const after = row({
+    patchSet: 5,
+    updated: 1785537000,
+    approvals: [{ type: 'Quokka-Review', value: '2', grantedOn: 1785537000, by: GRACE }],
+  });
+
+  const { code, out } = await watch(['watch', '200101', '--json'], { polls: [[before], [after]] });
+
+  assert.equal(code, EXIT.ok);
+  assert.deepEqual(JSON.parse(out).deltas, [
+    { change: 200101, kind: 'patch_set', label: null, from: 4, to: 5, by: 'ada', reason: null },
+    { change: 200101, kind: 'vote_changed', label: 'Quokka-Review', from: 1, to: 2, by: 'grace', reason: null },
   ]);
 });
 
@@ -199,8 +241,8 @@ test('a new patch set is reported with its uploader, and the cover message it br
   const record = JSON.parse(out);
   assert.equal(record.changes[0].patch_set, 5);
   assert.deepEqual(record.deltas, [
-    { change: 200101, kind: 'patch_set', label: null, from: 4, to: 5, by: 'ada' },
-    { change: 200101, kind: 'messages', label: null, from: 0, to: 1, by: 'ada' },
+    { change: 200101, kind: 'patch_set', label: null, from: 4, to: 5, by: 'ada', reason: null },
+    { change: 200101, kind: 'messages', label: null, from: 0, to: 1, by: 'ada', reason: null },
   ]);
 });
 
@@ -233,7 +275,7 @@ test('new inline comments are counted with their authors, read only once the cha
   assert.equal(reads.length, 2);
   assert.ok(reads.every((url) => url.endsWith('/a/changes/200101/comments')));
   assert.deepEqual(JSON.parse(out).deltas, [
-    { change: 200101, kind: 'comments', label: null, from: 1, to: 4, by: 'alan,grace' },
+    { change: 200101, kind: 'comments', label: null, from: 1, to: 4, by: 'alan,grace', reason: null },
   ]);
 });
 
@@ -252,7 +294,7 @@ test('new cover messages are counted with their authors', async () => {
 
   assert.equal(code, EXIT.ok);
   assert.deepEqual(JSON.parse(out).deltas, [
-    { change: 200101, kind: 'messages', label: null, from: 1, to: 3, by: 'buildbot,grace' },
+    { change: 200101, kind: 'messages', label: null, from: 1, to: 3, by: 'buildbot,grace', reason: null },
   ]);
 });
 
@@ -270,8 +312,8 @@ test('a merge is a status change, credited to the author of the message that rec
   const record = JSON.parse(out);
   assert.equal(record.changes[0].status, 'MERGED');
   assert.deepEqual(record.deltas, [
-    { change: 200101, kind: 'status', label: null, from: 'NEW', to: 'MERGED', by: 'grace' },
-    { change: 200101, kind: 'messages', label: null, from: 0, to: 1, by: 'grace' },
+    { change: 200101, kind: 'status', label: null, from: 'NEW', to: 'MERGED', by: 'grace', reason: null },
+    { change: 200101, kind: 'messages', label: null, from: 0, to: 1, by: 'grace', reason: null },
   ]);
 });
 
@@ -286,7 +328,7 @@ test('a change the server stops returning is a status change to null', async () 
   const record = JSON.parse(out);
   assert.deepEqual(record.changes, [{ change: 200101, subject: '', status: null, patch_set: 4, url: null }]);
   assert.deepEqual(record.deltas, [
-    { change: 200101, kind: 'status', label: null, from: 'NEW', to: null, by: null },
+    { change: 200101, kind: 'status', label: null, from: 'NEW', to: null, by: null, reason: null },
   ]);
 });
 
@@ -337,7 +379,7 @@ test('nothing changed by --timeout is a record with changed: false and exit 6', 
   assert.match(record.baseline, /^w1\./);
   assert.deepEqual(record.help, [
     'Run `gerrit-axi watch 200101 --interval 20 --timeout 50 --since <baseline>` to keep waiting from here;'
-      + " <baseline> is this record's baseline, or a file holding this record",
+      + " <baseline> is this record's baseline, or a file holding only it",
   ]);
 });
 
@@ -362,7 +404,7 @@ test('--since compares against the earlier baseline at once, and does not report
   const record = JSON.parse(second.out);
   assert.equal(record.polls, 1);
   assert.deepEqual(record.deltas, [
-    { change: 200101, kind: 'vote_added', label: 'Quokka-Review', from: null, to: 2, by: 'grace' },
+    { change: 200101, kind: 'vote_added', label: 'Quokka-Review', from: null, to: 2, by: 'grace', reason: null },
   ]);
 
   // Resuming from that record's baseline, the same vote is not news.
@@ -373,26 +415,31 @@ test('--since compares against the earlier baseline at once, and does not report
   assert.deepEqual(JSON.parse(third.out).deltas, []);
 });
 
-test('--since takes a file holding a whole earlier record, in TOON or JSON', async () => {
+test('--since takes a file holding only the baseline, and refuses a file holding a whole record', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'watch-since-'));
   try {
     const before = row();
     const after = row({ status: 'MERGED', updated: 1785537000 });
 
-    const toon = await watch(['watch', '200101', '--timeout', '0'], { polls: [[before]] });
-    assert.equal(toon.code, EXIT.timeout);
-    assert.match(toon.out, /^baseline: w1\.\S+$/m);
-    writeFileSync(path.join(dir, 'last.toon'), toon.out);
-    const json = await watch(['watch', '200101', '--timeout', '0', '--json'], { polls: [[before]] });
-    writeFileSync(path.join(dir, 'last.json'), json.out);
+    const first = await watch(['watch', '200101', '--timeout', '0', '--json'], { polls: [[before]] });
+    assert.equal(first.code, EXIT.timeout);
+    writeFileSync(path.join(dir, 'last.baseline'), `${JSON.parse(first.out).baseline}\n`);
+    writeFileSync(path.join(dir, 'last.json'), first.out);
 
-    for (const file of ['last.toon', 'last.json']) {
-      const resumed = await watch(['watch', '200101', '--since', file, '--json'], { polls: [[after]], cwd: dir });
-      assert.equal(resumed.code, EXIT.ok, file);
-      assert.deepEqual(JSON.parse(resumed.out).deltas, [
-        { change: 200101, kind: 'status', label: null, from: 'NEW', to: 'MERGED', by: null },
-      ], file);
-    }
+    const resumed = await watch(['watch', '200101', '--since', 'last.baseline', '--json'], {
+      polls: [[after]], cwd: dir,
+    });
+    assert.equal(resumed.code, EXIT.ok);
+    assert.deepEqual(JSON.parse(resumed.out).deltas, [
+      { change: 200101, kind: 'status', label: null, from: 'NEW', to: 'MERGED', by: null, reason: null },
+    ]);
+
+    const record = await watch(['watch', '200101', '--since', 'last.json', '--json'], {
+      polls: [[after]], cwd: dir,
+    });
+    assert.equal(record.code, EXIT.usage);
+    assert.equal(JSON.parse(record.out).code, 'BAD_USAGE');
+    assert.equal(record.queries, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

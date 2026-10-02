@@ -8,9 +8,7 @@
  * The token is `w1.` and the base64url of a JSON document naming the host and
  * holding core's Baseline for every change watched. It carries nothing that the
  * record it came in does not already show, and no credential. `--since` takes
- * the token itself, or a file holding it: the token alone, or a whole earlier
- * `watch` record in TOON or JSON, so a caller can redirect a watch's output to a
- * file and hand that file to the next one.
+ * the token itself, or a file holding only the token.
  */
 
 import { readFileSync } from 'node:fs';
@@ -48,7 +46,7 @@ export function encodeBaseline(host, baselines) {
  */
 export function decodeBaseline(token, host) {
   const bad = () => new UsageError('--since is not a watch baseline',
-    'Pass the baseline a watch record carries, or a file holding it or the whole record.');
+    'Pass the baseline a watch record carries, or a file holding only that baseline.');
   if (!token.startsWith(PREFIX)) throw bad();
   /** @type {any} */
   let doc;
@@ -83,7 +81,7 @@ export function decodeBaseline(token, host) {
 }
 
 /**
- * What `--since` names: a token, or a file holding one or a whole watch record.
+ * What `--since` names: a token, or a file holding only one.
  *
  * @param {string} value
  * @param {string} host
@@ -98,26 +96,7 @@ export function readSince(value, host, cwd) {
     text = readFileSync(path.resolve(cwd, value), 'utf8');
   } catch {
     throw new UsageError(`--since is neither a watch baseline nor a readable file: ${value}`,
-      'Pass the baseline a watch record carries, or a file holding it or the whole record.');
+      'Pass the baseline a watch record carries, or a file holding only that baseline.');
   }
-  return decodeBaseline(tokenIn(text), host);
-}
-
-/**
- * The token in a file's text: the text itself, a JSON record's `baseline`, or a
- * TOON record's `baseline:` line.
- *
- * @param {string} text
- * @returns {string}
- */
-function tokenIn(text) {
-  const trimmed = text.trim();
-  if (trimmed.startsWith(PREFIX)) return trimmed;
-  try {
-    const doc = JSON.parse(trimmed);
-    if (typeof doc?.baseline === 'string') return doc.baseline;
-  } catch {
-    // Not JSON; it may be TOON.
-  }
-  return /^baseline: (\S+)$/m.exec(trimmed)?.[1] ?? '';
+  return decodeBaseline(text.trim(), host);
 }

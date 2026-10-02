@@ -28,8 +28,9 @@
  *
  * Votes are the current patch set's, as `deriveVotes` reports them, keyed by
  * label and voter. A vote of 0 is no vote: Gerrit lists a reviewer it has added
- * with 0 on each label, and a vote taken back as 0. So a new patch set that a
- * vote did not carry over to shows as that vote removed.
+ * with 0 on each label, and a vote taken back as 0. A vote gone in the same
+ * poll as a new patch set is a vote reset, credited to no one: the voter did not
+ * take it back, the label did not carry over to the new patch set.
  *
  * No label name appears here; labels are whatever the server called them.
  */
@@ -97,16 +98,18 @@ const TRANSIENT_CODES = new Set(['SSH_FAILED', 'HTTP_ERROR']);
  * a status, or a message or comment count. `by` is who did it, as far as the
  * server says: the voter, the uploader, the authors of the new messages or
  * comments, and for a status the author of the newest new cover message, which
- * is the account Gerrit records a merge or an abandon under; null when nothing
- * names one.
+ * is the account Gerrit records a merge or an abandon under; empty when nothing
+ * names one, and for a vote reset. `reason` says why a vote was reset; null for
+ * every other kind.
  *
  * @typedef {Object} Delta
  * @property {number} change
- * @property {'vote_added'|'vote_changed'|'vote_removed'|'patch_set'|'comments'|'messages'|'status'} kind
+ * @property {'vote_added'|'vote_changed'|'vote_removed'|'vote_reset'|'patch_set'|'comments'|'messages'|'status'} kind
  * @property {string|null} label     the vote's label; null for every other kind
  * @property {string|number|null} from
  * @property {string|number|null} to
  * @property {string[]} by
+ * @property {string|null} reason
  */
 
 /**
@@ -233,13 +236,13 @@ export function diffChange(before, after) {
   if (before.status !== after.status) {
     const newest = newMessages.at(-1)?.author ?? null;
     deltas.push({ change, kind: 'status', label: null, from: before.status, to: after.status,
-      by: newest === null ? [] : [newest] });
+      by: newest === null ? [] : [newest], reason: null });
   }
   if (after.status === null) return deltas;
 
   if (before.patchSet !== after.patchSet) {
     deltas.push({ change, kind: 'patch_set', label: null, from: before.patchSet, to: after.patchSet,
-      by: after.uploader === null ? [] : [after.uploader] });
+      by: after.uploader === null ? [] : [after.uploader], reason: null });
   }
 
   const key = (/** @type {VoteState} */ v) => JSON.stringify([v.label, v.by]);
@@ -249,25 +252,30 @@ export function diffChange(before, after) {
     const old = was.get(k);
     if (old === undefined) {
       deltas.push({ change, kind: 'vote_added', label: vote.label, from: null, to: vote.value,
-        by: vote.by === null ? [] : [vote.by] });
+        by: vote.by === null ? [] : [vote.by], reason: null });
     } else if (old.value !== vote.value) {
       deltas.push({ change, kind: 'vote_changed', label: vote.label, from: old.value, to: vote.value,
-        by: vote.by === null ? [] : [vote.by] });
+        by: vote.by === null ? [] : [vote.by], reason: null });
     }
   }
+  const reset = before.patchSet === after.patchSet ? null : `patch set ${before.patchSet} -> ${after.patchSet}`;
   for (const [k, vote] of was) {
     if (now.has(k)) continue;
-    deltas.push({ change, kind: 'vote_removed', label: vote.label, from: vote.value, to: null,
-      by: vote.by === null ? [] : [vote.by] });
+    if (reset === null) {
+      deltas.push({ change, kind: 'vote_removed', label: vote.label, from: vote.value, to: null,
+        by: vote.by === null ? [] : [vote.by], reason: null });
+    } else {
+      deltas.push({ change, kind: 'vote_reset', label: vote.label, from: vote.value, to: null, by: [], reason: reset });
+    }
   }
 
   if (newMessages.length > 0) {
     deltas.push({ change, kind: 'messages', label: null, from: before.messages, to: after.messages.length,
-      by: authors(newMessages) });
+      by: authors(newMessages), reason: null });
   }
   if (after.comments !== null && after.comments.length > before.comments) {
     deltas.push({ change, kind: 'comments', label: null, from: before.comments, to: after.comments.length,
-      by: authors(after.comments.slice(before.comments)) });
+      by: authors(after.comments.slice(before.comments)), reason: null });
   }
   return deltas;
 }
