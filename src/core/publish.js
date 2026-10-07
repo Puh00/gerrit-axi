@@ -30,7 +30,7 @@
  *
  * A push can carry more than a commit: Gerrit reads options off the magic ref,
  * and some of them vote or submit. `buildPushArgs` is the only place a push is
- * built, and the only option it can express is a topic.
+ * built, and the only options it can express are a topic and work-in-progress.
  */
 
 import { randomBytes } from 'node:crypto';
@@ -241,7 +241,7 @@ export function pushUrl({ host, port, user, project }) {
 
 /**
  * The argv for the one push this tool makes: `commit` to `refs/for/<branch>`,
- * optionally with a topic. Exported so a test can pin it exactly.
+ * optionally with a topic and WIP. Exported so a test can pin it exactly.
  *
  * Nothing else can be expressed. Gerrit also reads a vote (`l=`), a submit, and
  * reviewers off the magic ref; none of them has a parameter here, and the branch
@@ -250,15 +250,16 @@ export function pushUrl({ host, port, user, project }) {
  * @param {string} url
  * @param {string} commit
  * @param {string} branch
- * @param {{topic?: string|null}} [opts]
+ * @param {{topic?: string|null, wip?: boolean}} [opts]
  * @returns {string[]}
  */
-export function buildPushArgs(url, commit, branch, { topic = null } = {}) {
+export function buildPushArgs(url, commit, branch, { topic = null, wip = false } = {}) {
   if (!OBJECT_ID.test(commit)) {
     throw new GerritError(`not a commit id: ${commit}`, { code: 'GIT_FAILED' });
   }
   checkRefName(branch, 'branch');
   if (topic !== null) checkRefName(topic, 'topic');
+  const options = [...(topic === null ? [] : [`topic=${topic}`]), ...(wip === true ? ['wip'] : [])];
   return [
     // A configured push.pushOption would ride along on every push; an empty
     // value clears the list, so the server receives only what is built here.
@@ -268,7 +269,7 @@ export function buildPushArgs(url, commit, branch, { topic = null } = {}) {
     '--no-follow-tags',
     '--no-recurse-submodules',
     url,
-    `${commit}:refs/for/${branch}${topic === null ? '' : `%topic=${topic}`}`,
+    `${commit}:refs/for/${branch}${options.length ? `%${options.join(',')}` : ''}`,
   ];
 }
 
@@ -546,7 +547,7 @@ function existingChangeId(commit) {
  * one squashed change, then read back what the server made of them.
  *
  * @param {import('./session.js').Session} session
- * @param {{shape: 'stack'|'squash', branch?: string|null, topic?: string|null,
+ * @param {{shape: 'stack'|'squash', branch?: string|null, topic?: string|null, wip?: boolean,
  *          newChangeId?: () => string}} opts
  *   `newChangeId` is the source of fresh Change-Ids, a parameter so a test can fix it
  * @returns {Promise<Publication>}
@@ -555,6 +556,7 @@ export async function publishChanges(session, {
   shape,
   branch = null,
   topic = null,
+  wip = false,
   newChangeId = randomChangeId,
 }) {
   if (shape !== 'stack' && shape !== 'squash') {
@@ -647,7 +649,7 @@ export async function publishChanges(session, {
   }
   const pushed = toPublish[toPublish.length - 1].commit;
 
-  const result = await git(session, buildPushArgs(url, pushed, server.branch, { topic }), {
+  const result = await git(session, buildPushArgs(url, pushed, server.branch, { topic, wip }), {
     timeoutMs: 300_000,
   });
   const { newPatchSets } = parsePushResult(result);
@@ -663,6 +665,16 @@ export async function publishChanges(session, {
     { limit: toPublish.length },
   );
   const byChangeId = new Map(found.map((change) => [change.id, change]));
+  if (wip === true && toPublish.some((entry) => {
+    const change = byChangeId.get(entry.changeId);
+    return change?.wip !== true || change.status !== 'NEW'
+      || change.currentPatchSet?.revision !== entry.commit;
+  })) {
+    throw new TransportError('the push completed, but readback did not confirm every published revision as work in progress', {
+      code: 'WIP_NOT_CONFIRMED',
+      remedy: 'Inspect the changes before retrying; no new changes does not update WIP state.',
+    });
+  }
   const { leftBehind, leftBehindError } = topic === null
     ? { leftBehind: null, leftBehindError: null }
     : await openTopicMembersNotSent(session, server.branch, topic, toPublish);

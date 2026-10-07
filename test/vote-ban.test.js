@@ -56,8 +56,9 @@ function logRecord(sha, parent, message) {
  * @param {string} log
  * @param {string} head
  */
-function repo(log, head) {
+function repo(log, head, ready = false) {
   let built = 0;
+  let activated = false;
   return fakeRunner([
     { match: (f, a) => f === 'git' && a.includes('remote'), result: { stdout: REMOTE } },
     {
@@ -77,7 +78,14 @@ function repo(log, head) {
       match: (f, a) => f === 'git' && a.includes('push'),
       result: (_f, a) => ({ stdout: `To x\n*\t${a[a.length - 1]}\t[new reference]\nDone\n` }),
     },
-    { match: (f) => f === 'ssh', result: { stdout: fixture('query-stack.txt') } },
+    { match: (f, a) => f === 'ssh' && a.includes('--json'), result: () => {
+      activated = true;
+      return {};
+    } },
+    { match: (f) => f === 'ssh', result: () => ({ stdout: ready
+      ? fixture('query-stack.txt').trim().split('\n')
+        .map((line) => JSON.stringify({ ...JSON.parse(line), wip: !activated })).join('\n')
+      : fixture('query-stack.txt') }) },
   ]);
 }
 
@@ -116,6 +124,7 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   const operations = [
     { argv: ['publish', '--stack', '--topic', 'stack-of-three'], log: stackLog, head: c },
     { argv: ['publish', '--squash'], log: squashLog, head: b },
+    { argv: ['ready', '200101'], log: '', head: c },
     { argv: ['submit', '200101'], log: '', head: c },
     { argv: ['submit', '200102'], log: '', head: c },
     { argv: ['message', '200101'], log: '', head: c, stdin: hostile },
@@ -132,7 +141,7 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
     ])], log: '', head: c },
   ];
 
-  /** @type {Array<{op: string, file: string, args: string[]}>} */
+  /** @type {Array<{op: string, file: string, args: string[], input?: string}>} */
   const processes = [];
   /** @type {Array<{op: string, method: string, path: string}>} */
   const requests = [];
@@ -140,7 +149,7 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   Session.prototype.token = async () => ({ token: 'placeholder-not-a-real-token', backend: 'file', location: null });
   try {
     for (const { argv, log, head, stdin } of operations) {
-      const runner = repo(log, head);
+      const runner = repo(log, head, argv[0] === 'ready');
       const fetchImpl = fakeFetch(fetchRoutes);
       const stdout = captureStream();
       const code = await main(argv, {
@@ -154,7 +163,7 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
       });
       const op = argv.join(' ') || '(dashboard)';
       assert.equal(code, EXIT.ok, `${op} must run to completion for its calls to count:\n${stdout.text}`);
-      for (const call of runner.calls) processes.push({ op, file: call.file, args: call.args });
+      for (const call of runner.calls) processes.push({ op, file: call.file, args: call.args, input: call.input });
       for (const call of fetchImpl.calls) {
         requests.push({ op, method: call.method ?? 'GET', path: new URL(call.url).pathname });
       }
@@ -170,12 +179,16 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   assert.deepEqual(requests.filter((r) => r.op === 'submit 200102').map((r) => `${r.method} ${r.path}`),
     ['POST /a/changes/200102/submit', 'GET /a/changes/200102']);
   const posts = processes.filter((p) => p.file === 'ssh' && p.args.includes('review'));
-  assert.equal(posts.length, 1, 'the message was posted exactly once');
+  assert.equal(posts.length, 2, 'the message and activation each write once');
+  const activation = posts.find((p) => p.op === 'ready 200101');
+  assert.deepEqual(activation.args.slice(activation.args.indexOf('gerrit')),
+    ['gerrit', 'review', '--json', '200101,4']);
+  assert.equal(activation.input, '{"ready":true,"notify":"NONE"}');
 
   // The one command that can vote leaves the process with these words and no
   // others: the text is one quoted element, and the target is change,patchset.
-  const [post] = posts;
-  assert.equal(post.op, 'message 200101', 'only the message operation may run gerrit review');
+  const post = posts.find((p) => p.op === 'message 200101');
+  assert.equal(post.op, 'message 200101', 'message has its own fixed review shape');
   const at = post.args.indexOf('gerrit');
   assert.deepEqual(post.args.slice(at), ['gerrit', 'review', '--message', quoteForGerrit(hostile), '200101,4'],
     `the message argv must be gerrit review --message <one quoted word> <change>,<patchset>. ${WHY}`);
@@ -204,7 +217,7 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
     const posting = op === 'message 200101' && file === 'ssh';
     const scanned = posting
       ? args.filter((arg) => arg !== 'review' && arg !== quoteForGerrit(hostile))
-      : args;
+      : op === 'ready 200101' && file === 'ssh' ? args.filter((arg) => arg !== 'review') : args;
     // An ssh command line can arrive as one argv element, so each is split too.
     const tokens = scanned.flatMap((arg) => [arg, ...arg.split(/\s+/)]);
     for (const [isBanned, what] of banned) {

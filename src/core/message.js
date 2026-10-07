@@ -3,9 +3,9 @@
 /**
  * Posting one change-level message to one change.
  *
- * This is the third write, and the only module in the codebase that spells the
- * remote command it uses. That command can also vote, submit, abandon, restore
- * and rebase, which is why every other module is forbidden to name it
+ * This module and ready.js are the only modules that spell the remote command
+ * they use. That command can also vote, submit, abandon, restore
+ * and rebase, which is why every module outside those two is forbidden to name it
  * (test/layering.test.js scans for it) and why this one builds its argv in a
  * single function with no parameter for a flag: `buildMessageArgs` takes a
  * connection, a change, a patch set and a text, and emits a fixed shape whose

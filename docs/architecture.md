@@ -76,12 +76,11 @@ Three channels, each necessary:
   string can become an element of the argv — and so a hundred-row list view never
   pays for a hundred message timelines.
 
-  The same channel carries the one SSH write: `gerrit review --message <text>
-  <change>,<patchset>`, built by `buildMessageArgs` in `src/core/message.js`,
-  which has no parameter for any other option. The text travels as one
-  single-quoted word — the `'\''` spelling that Gerrit's own tokeniser and a
-  POSIX shell both read as literal — so nothing in it can become an option of
-  `gerrit review` or a command on a host that turned out to have a shell.
+  The same channel carries two SSH writes.
+  `buildMessageArgs` in `src/core/message.js` builds `gerrit review --message <text> <change>,<patchset>`, with no parameter for another option.
+  The text travels as one single-quoted word, so it cannot become another option or a shell command.
+  `buildReadyArgs` in `src/core/ready.js` builds `gerrit review --json <change>,<patchset>` with a fixed ready/notify object on stdin.
+  Activation checks optional expected patch set and revision guards before writing, then verifies the same patch set and revision are active by readback.
 - **REST** — `https://<host>/a/...` with Basic auth, for inline comments, which
   SSH cannot reach, and for the one write REST makes: `POST
   /a/changes/<n>/submit`. Every other request is a GET. Gerrit prefixes every REST

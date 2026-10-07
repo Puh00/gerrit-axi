@@ -40,6 +40,10 @@ gerrit-axi comments <change>...      inline comments (--bots | --humans)
 gerrit-axi auth status               whether the stored credential still works
 gerrit-axi publish --stack --topic <t>   each commit on HEAD becomes a change
 gerrit-axi publish --squash          the commits on HEAD become one change
+    --wip                          publish WIP and verify state by readback
+gerrit-axi ready <change>            activate WIP without a new patch set
+    --patch-set <n>                 refuse a different current patch set
+    --revision <sha>                refuse a different current revision
 gerrit-axi submit <change>           ask the server to submit one change
 gerrit-axi message <change>          post one change message, text on stdin or --file
 gerrit-axi watch <change>...         wait for a vote, patch set, comment or status change
@@ -53,6 +57,9 @@ Run `gerrit-axi --help` for every option.
 
 - It cannot vote, add reviewers, or set labels, and no workaround exists: ask
   the user when a change needs a vote.
+- `ready` activates an open work-in-progress change over SSH without an HTTP token.
+  Use `--patch-set` or `--revision` to guard previously validated work; a mismatch refuses the write.
+  Readback must confirm the same revision is active, and an already-active change succeeds without writing.
 - `submit` only a change the server marks submittable; a refusal comes back in
   the server's own words. A change that has already merged is a success with
   `already_merged: true`.

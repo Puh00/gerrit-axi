@@ -10,7 +10,7 @@
  * for the global options rather than repeating their descriptions.
  */
 
-export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review state as records, watch, publish, message, and submit
+export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review state as records, watch, publish, ready, message, and submit
 
 usage: gerrit-axi [<command>] [options]
        gerrit-axi <command> --help     that command's options and examples
@@ -66,8 +66,12 @@ commands, and the options each one takes:
   publish --stack --topic <t> every commit on HEAD since it left the server's
                               branch becomes its own change, under topic <t>
   publish --squash            those commits become one change
+      --wip                  publish as work in progress; verify by readback
       --branch <b>            the branch to propose against (default: the
                               server's default branch)
+  ready <change>             activate a work-in-progress change over SSH
+      --patch-set <n>         refuse if the current patch set differs
+      --revision <sha>        refuse if the current revision differs
   submit <change>             ask the server to submit one change; a refusal is
                               reported in the server's own words, and a change
                               already merged is a success, already_merged: true
@@ -246,10 +250,31 @@ global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
 examples:
   gerrit-axi auth status
   gerrit-axi auth status --json`,
+  ready: `gerrit-axi ready - activate a work-in-progress change without a new patch set
+
+usage: gerrit-axi ready <change> [--patch-set <n>] [--revision <sha>]
+
+Exactly one change number is required. Uses SSH, with no HTTP token.
+An already-active open change succeeds without writing. Closed changes are refused.
+
+options:
+  --patch-set <n>         expected current patch set number
+  --revision <sha>        expected full lowercase commit object ID
+
+Guards are checked before writing. Readback must confirm an active change on the
+same patch set and revision. These checks are not an atomic concurrency lock.
+No votes or email notifications are requested.
+
+global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
+  --rest-base <u> (see gerrit-axi --help)
+
+examples:
+  gerrit-axi ready 12345 --patch-set 2
+  gerrit-axi ready 12345 --json`,
   publish: `gerrit-axi publish - push the commits on HEAD for review, as changes
 
-usage: gerrit-axi publish --stack --topic <t> [--branch <b>]
-       gerrit-axi publish --squash [--branch <b>]
+usage: gerrit-axi publish --stack --topic <t> [--branch <b>] [--wip]
+       gerrit-axi publish --squash [--branch <b>] [--wip]
 
 Publishes every commit on HEAD since it left the server's branch. Takes no
 arguments; exactly one of --stack or --squash is required.
@@ -258,6 +283,7 @@ options:
   --stack                 each commit becomes its own change
   --topic <t>             the topic the stack's changes share (required with
                           --stack, refused with --squash)
+  --wip                   publish as work in progress; verify by readback
   --squash                the commits become one change
   --branch <b>            the branch to propose against (default: the server's
                           default branch)

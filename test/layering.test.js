@@ -198,8 +198,8 @@ test('the core entry point exposes the library API a second binary would import'
   }
 });
 
-/** The one module allowed to spell the command that can vote. */
-const MESSAGE_MODULE = path.join(SRC_DIR, 'core', 'message.js');
+/** Only these modules may spell the command that can vote. */
+const REVIEW_MODULES = [path.join(SRC_DIR, 'core', 'message.js'), path.join(SRC_DIR, 'core', 'ready.js')];
 
 test('voting is structurally impossible: no voting command or voting path exists anywhere', () => {
   // THE PROPERTY THIS TEST HOLDS. gerrit-axi publishes and submits, and it cannot
@@ -235,14 +235,13 @@ test('voting is structurally impossible: no voting command or voting path exists
   const code = new Map(files.map((file) => [file, stripComments(readFileSync(file, 'utf8'))]));
   const rel = (/** @type {string} */ file) => path.relative(REPO_ROOT, file);
 
-  // No voting vocabulary, in any spelling a caller could reach. One module is
-  // exempt from the first two patterns: the one that posts a change message
-  // spells the command once, and test/message.test.js and test/vote-ban.test.js
-  // pin the argv it builds by running it.
+  // No voting vocabulary, in any spelling a caller could reach. Only the
+  // message and ready modules may spell the review command. Their runtime
+  // tests pin the argv and stdin payload; scoring patterns remain banned.
   const votingPaths = [
     [/\bgerrit\b[\s'"`,]*\breview\b/, 'the gerrit review SSH command, as a string or as argv',
-      MESSAGE_MODULE],
-    [/['"`]review['"`\s]/, 'review as an argv element', MESSAGE_MODULE],
+      REVIEW_MODULES],
+    [/['"`]review['"`\s]/, 'review as an argv element', REVIEW_MODULES],
     [/--(?:code-review|verified)\b|--label[\s'"`,=]+['"`]?(?:\$\{|[A-Za-z0-9-]+=)/,
       'a gerrit review scoring flag (--label NAME=VALUE; secret-tool\'s --label=<text> is not one)'],
     [/\/review/, 'a REST path to the review endpoint, where votes are recorded'],
@@ -253,7 +252,7 @@ test('voting is structurally impossible: no voting command or voting path exists
   ];
   for (const [file, text] of code) {
     for (const [pattern, what, exempt] of votingPaths) {
-      if (exempt === file) continue;
+      if (Array.isArray(exempt) && exempt.includes(file)) continue;
       assert.equal(/** @type {RegExp} */ (pattern).test(text), false,
         `${rel(file)} contains ${what} (${pattern}). ${WHY}`);
     }

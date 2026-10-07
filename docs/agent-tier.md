@@ -33,7 +33,12 @@ gerrit-axi auth status                 whether the stored credential still works
 
 gerrit-axi publish --stack --topic <t> each commit on HEAD becomes its own change, under topic <t>
 gerrit-axi publish --squash            the commits on HEAD become one change
+    --wip                              publish as work in progress and verify by readback
     --branch <b>                       the branch to propose against (default: the server's default)
+
+gerrit-axi ready <change>              activate without a new patch set
+    --patch-set <n>                    expected current patch set
+    --revision <sha>                   expected full commit ID
 
 gerrit-axi submit <change>             ask the server to submit one change
 
@@ -591,3 +596,33 @@ kind: usage
 remedy: "Did you mean --comments? Options for show: --messages, --comments, --bots, --humans, --full. Global options: --json, --host, --user, --port, --project, --rest-base, --help, --version."
 exit=2
 ```
+
+## Work in progress
+
+Add `--wip` to either publish shape to send Gerrit's fixed `wip` push option alongside the validated topic, if any.
+The returned `changes` rows contain the server's WIP state.
+Every published revision must be current, open and WIP in the readback, or the command fails with `WIP_NOT_CONFIRMED`.
+A push answered with "no new changes" does not by itself confirm WIP.
+Without `--wip`, publication behavior is unchanged.
+
+`gerrit-axi ready <change>` activates an open work-in-progress change over SSH, without an HTTP token or a new patch set.
+It sends only `{"ready":true,"notify":"NONE"}` on stdin, never caller-supplied review JSON, labels, or options.
+No email notification is requested.
+An optional `--patch-set <n>` or `--revision <sha>` refuses stale validation with `PATCH_SET_MISMATCH` before writing; both may be supplied.
+The revision must be a full lowercase commit ID.
+Guards are checked even for an already-active change, which otherwise succeeds without a write.
+Closed changes are refused with `READY_REFUSED`.
+
+```sh
+gerrit-axi publish --stack --topic demo --wip
+gerrit-axi ready 12345 --patch-set 2 --json
+```
+
+A ready confirmation contains `ok`, `op: ready`, `change`, `patch_set`, `revision`, `wip: false`, `status: NEW`, and `already_ready`.
+The write is followed by a query that must confirm the same patch set and revision, still open and now active.
+A mismatch fails with `READY_NOT_CONFIRMED`; a missing change remains `NOT_FOUND`.
+A refusal carries Gerrit's words with `READY_REFUSED`, while an SSH connection or process failure is `SSH_FAILED`.
+These transport errors exit 5 and follow the usual typed stdout error contract.
+Readback failures can occur after the write has taken effect, so inspect the change before retrying.
+The guards and readback detect concurrent patch set updates, but do not provide an atomic lock across the query and write.
+Activation does not approve or submit a change.

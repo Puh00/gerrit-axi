@@ -46,6 +46,7 @@ injectable, the real code paths run against them. Covered in particular:
   the push argv pinned exactly, a branch or topic that would smuggle a push option
   refused, a server rejection reported verbatim, and "no new changes" treated as
   already published
+- work-in-progress publication verified by readback, including "no new changes", and activation over SSH with fixed JSON on stdin, stale revision guards, idempotent already-active behavior, and unchanged patch set verification
 - submit as one POST with no query before it, and a refusal carried in the
   server's own words
 - the change message: the argv pinned exactly, a text stuffed with every scoring
@@ -53,9 +54,7 @@ injectable, the real code paths run against them. Covered in particular:
   tokeniser, the text taken from stdin or a file and never from argv, an empty
   text refused before any round trip, and a refusal carried in the server's words
 - the layering rules, the absence of any hostname literal, and that nothing can
-  vote: `gerrit review` spelled in one module only and there with `--message` as
-  its only option, no REST review or votes path, no label option on a push, no
-  `set-reviewers` or `set-topic`
+  vote: only the message and ready modules may spell the SSH review command, with runtime tests pinning their fixed arguments and payloads; no REST review or votes path, no label option on a push, no `set-reviewers` or `set-topic`
 
 The one thing the suite cannot check on a machine without them is the
 `secret-tool` and `gpg` backends against a *real* keyring or GPG key; those are

@@ -32,9 +32,10 @@
  *
  *     const { deltas, baseline } = await watchChanges(session, [184458, 184459]);
  *
- * ...and the three writes, which are all there are -- nothing here can vote:
+ * ...and the four writes, which are all there are -- nothing here can vote:
  *
  *     const publication = await publishChanges(session, { shape: 'stack', topic: 'retry' });
+ *     const active = await readyChange(session, 184458);
  *     const posted = await postChangeMessage(session, 184458, 'What the fix changed...');
  *     const merged = await submitChange(session, 184458);   // the server may refuse
  */
@@ -151,3 +152,5 @@ export { buildMessageArgs, postChangeMessage, quoteForGerrit } from './message.j
 export { AuthError, ConfigError, GerritError, TransportError } from './errors.js';
 
 export { commandExists, runCommand } from './exec.js';
+
+export { buildReadyArgs, readyChange } from './ready.js';

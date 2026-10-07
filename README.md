@@ -3,28 +3,26 @@
 A Gerrit CLI. It answers the questions a reviewer actually asks — *whose turn is
 it*, *what is blocking this change*, and *where does this one change stand* — and
 prints the review comments, inline and cover, including the machine-generated
-ones. For an agent, it also publishes changes, posts a change message, and
-submits them.
+ones. For an agent, it also publishes changes, activates work-in-progress changes, posts a change message, and submits them.
 
 Two binaries over one library: `gerrit` renders for a person, `gerrit-axi` emits
 records for an agent. They are siblings, not wrappers — see
 [The agent tier](docs/agent-tier.md).
 
-**It cannot vote.** `gerrit`, for a person, is read-only: every operation is a
-query. `gerrit-axi`, for an agent, adds exactly three writes — `publish`, one push
-to `refs/for/<branch>`; `message`, one change-level message with no label; and
-`submit`, one REST call the server may refuse — and nothing else: it never votes,
-writes an inline comment, sets reviewers, or abandons. Submitting cannot get round
-the votes, because Gerrit evaluates its submit rules on the server and refuses a
-change they do not support. Voting is what would get round them: a tool that can
-record an approval lets an agent manufacture one and then submit against it. So
-no path to a vote exists, and `npm test` fails if a REST call to the review
-endpoint or a label option on a push appears anywhere in the code, or if
-`gerrit review` — the SSH command that posts a message, and that could vote — is
-spelled anywhere but in the one module that builds it, or there with any option
-but `--message`. Those three are the only writes to Gerrit by design. The
-binding control is the label permissions your server grants the account an agent
-uses; this is defence in depth behind them.
+**It cannot vote.**
+`gerrit`, for a person, is read-only: every operation is a query.
+`gerrit-axi`, for an agent, adds four writes: `publish`, one push to `refs/for/<branch>`; `ready`, activation of a work-in-progress change; `message`, one change-level message with no label; and `submit`, one REST call the server may refuse.
+It never votes, writes an inline comment, sets reviewers, or abandons.
+Gerrit evaluates its submit rules on the server and refuses a change without the required approvals.
+The tests forbid REST review endpoints and label push options throughout the codebase.
+Only `message.js` and `ready.js` may build the SSH review command, with fixed options and runtime tests that pin their arguments and payloads.
+The binding control remains the label permissions your server grants the account an agent uses.
+
+Use `gerrit-axi publish --squash --wip` or `gerrit-axi publish --stack --topic demo --wip` to publish work in progress.
+The command reads the changes back and requires WIP on every published revision, including when the push reports "no new changes".
+Use `gerrit-axi ready 12345 --patch-set 2` to activate an open change without a new patch set or an HTTP token.
+An optional `--revision <sha>` guard checks the full commit ID; both guards can be supplied together.
+An already-active open change succeeds without writing, and closed changes are refused.
 
 ```console
 $ gerrit status

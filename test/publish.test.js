@@ -612,3 +612,43 @@ test('a directory that is not a repository fails before anything reaches the ser
   });
   assert.equal(gitCalls(runner, 'ls-remote').length, 0);
 });
+
+test('WIP composes only its fixed push option with the validated topic', () => {
+  const sha = 'a'.repeat(40);
+  assert.equal(buildPushArgs(URL, sha, 'main').at(-1), `${sha}:refs/for/main`);
+  assert.equal(buildPushArgs(URL, sha, 'main', { wip: true }).at(-1), `${sha}:refs/for/main%wip`);
+  assert.equal(buildPushArgs(URL, sha, 'main', { topic: 'demo', wip: true }).at(-1), `${sha}:refs/for/main%topic=demo,wip`);
+  for (const injected of ['demo,submit', 'demo%l=Review+2', 'demo:refs/heads/main', 'demo,r=user']) {
+    assert.throws(() => buildPushArgs(URL, sha, 'main', { topic: injected, wip: true }));
+    assert.throws(() => buildPushArgs(URL, sha, injected, { wip: true }));
+  }
+  assert.equal(buildPushArgs(URL, sha, 'main', { wip: 'submit' }).at(-1), `${sha}:refs/for/main`);
+});
+
+test('WIP publication verifies every requested revision, including no-new-changes pushes', async () => {
+  const sha = 'a'.repeat(40);
+  const id = `I${'1'.repeat(40)}`;
+  for (const noNewChanges of [false, true]) {
+    for (const state of ['wip', 'active', 'missing', 'stale', 'closed']) {
+      const row = JSON.parse(changeRowJson(200101, id, sha));
+      row.wip = state !== 'active';
+      if (state === 'stale') row.currentPatchSet.revision = 'b'.repeat(40);
+      if (state === 'closed') row.status = 'ABANDONED';
+      const runner = fakeRepo({
+        head: sha,
+        log: logRecord({ sha, parent: BASE, message: `Only\n\nChange-Id: ${id}\n` }),
+        push: noNewChanges ? { code: 1, stdout: `!\t${sha}:refs/for/main\t[remote rejected] (no new changes)\n` } : undefined,
+        readback: state === 'missing' ? [] : [JSON.stringify(row)],
+      });
+      const session = new Session({ config: CONFIG, runner, cwd: '/work' });
+      if (state === 'wip') {
+        const result = await publishChanges(session, { shape: 'squash', wip: true });
+        assert.equal(result.published[0].change.wip, true);
+        assert.equal(result.newPatchSets, !noNewChanges);
+      } else {
+        await assert.rejects(publishChanges(session, { shape: 'squash', wip: true }), { code: 'WIP_NOT_CONFIRMED' });
+      }
+      assert.equal(runner.calls.find((c) => c.args.includes('push')).args.at(-1), `${sha}:refs/for/main%wip`);
+    }
+  }
+});

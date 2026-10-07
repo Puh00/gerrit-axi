@@ -7,6 +7,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/). Each release's section
 here is its GitHub Release notes, above the list of pull requests it merged.
 
+## [Unreleased]
+
+### Added
+
+- `gerrit-axi publish --wip` publishes changes as work in progress and verifies each published revision's state by readback, including pushes answered with "no new changes".
+- `gerrit-axi ready <change>` activates an open work-in-progress change over SSH without a new patch set or an HTTP token.
+  Optional `--patch-set` and `--revision` guards refuse stale validation before writing, and readback verifies the same patch set and revision are active.
+  An already-active change succeeds without writing; closed changes are refused.
+
 ## [0.5.0]
 
 ### Added

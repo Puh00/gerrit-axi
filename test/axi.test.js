@@ -1027,7 +1027,7 @@ test('the package declares both binaries and leaves the human one alone', () => 
   assert.equal(humanUsage.includes('--json'), false, 'the human CLI has no --json');
 });
 
-test('publish --stack is one push, answered with the changes the server now holds', async () => {
+for (const wip of [false, true]) test(`publish --stack with wip=${wip} is one verified push`, async () => {
   const base = '0'.repeat(40);
   const [a, b, c] = ['a', 'b', 'c'].map((x) => x.repeat(40));
   const record = (/** @type {string} */ sha, /** @type {string} */ parent, /** @type {string} */ subject) => [
@@ -1055,10 +1055,11 @@ test('publish --stack is one push, answered with the changes the server now hold
       match: (f, args) => f === 'git' && args.includes('push'),
       result: { stdout: `To x\n*\t${c}:refs/for/main%topic=stack-of-three\t[new reference]\nDone\n` },
     },
-    { match: (f) => f === 'ssh', result: { stdout: fixture('query-stack.txt') } },
+    { match: (f) => f === 'ssh', result: { stdout: fixture('query-stack.txt').trim().split('\n')
+      .map((line) => JSON.stringify({ ...JSON.parse(line), wip })).join('\n') } },
   ]);
   const stdout = captureStream();
-  const code = await main(['publish', '--stack', '--topic', 'stack-of-three'], {
+  const code = await main(['publish', '--stack', '--topic', 'stack-of-three', ...(wip ? ['--wip'] : [])], {
     cwd: '/some/checkout',
     env: ENV,
     stdout: stdout.stream,
@@ -1070,7 +1071,7 @@ test('publish --stack is one push, answered with the changes the server now hold
 
   const pushes = runner.calls.filter((call) => call.file === 'git' && call.args.includes('push'));
   assert.equal(pushes.length, 1);
-  assert.equal(pushes[0].args.at(-1), `${c}:refs/for/main%topic=stack-of-three`);
+  assert.equal(pushes[0].args.at(-1), `${c}:refs/for/main%topic=stack-of-three${wip ? ',wip' : ''}`);
 
   assert.match(stdout.text, /^op: publish$/m);
   assert.match(stdout.text, /^shape: stack$/m);
@@ -1088,6 +1089,7 @@ test('publish --stack is one push, answered with the changes the server now hold
     ['200102', 'stack-of-three'],
     ['200103', 'stack-of-three'],
   ]);
+  assert.ok(table(stdout.text, 'changes').every((row) => row.wip === String(wip)));
   assert.match(stdout.text, /^left_behind: \[\]$/m, 'every open change in the topic was just published');
 });
 
