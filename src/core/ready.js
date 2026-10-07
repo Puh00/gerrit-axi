@@ -62,7 +62,11 @@ export async function readyChange(session, number, expected = {}) {
     runner: session.runner,
     input: JSON.stringify({ ready: true, notify: 'NONE' }),
   });
-  if (result.code === 255) throw sshFailure(conn, result);
+  if (result.code === null || result.code === 255) {
+    const error = sshFailure(conn, result);
+    error.remedy = `Inspect the change before retrying; the ready write may already have taken effect.\n${error.remedy}`;
+    throw error;
+  }
   if (result.code !== 0) {
     throw new TransportError(`Gerrit refused to activate change ${number}: ${String(result.stderr ?? '').trim() || `exit ${result.code}`}`, {
       code: 'READY_REFUSED',

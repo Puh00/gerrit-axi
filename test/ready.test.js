@@ -121,3 +121,21 @@ test('ready argv rejects injected targets and unsafe SSH destinations', () => {
   }
   assert.throws(() => buildReadyArgs({ ...conn, user: '-oProxyCommand=id' }, 12345, 2), /begins with/);
 });
+
+test('interrupted ready writes report SSH failure and an uncertain activation outcome', async () => {
+  for (const post of [
+    { code: null, stderr: '\ntimed out after 60000ms' },
+    { code: null, stderr: '' },
+    { code: 255, stderr: 'connection lost' },
+  ]) {
+    const { code, record, calls } = await run(['12345'], { post });
+    assert.equal(code, EXIT.transport);
+    assert.equal(record.code, 'SSH_FAILED');
+    assert.ok(record.error.includes(post.stderr.trim() || 'exit null'));
+    assert.match(record.remedy, /Inspect the change before retrying/);
+    assert.match(record.remedy, /ready write may already have taken effect/);
+    assert.equal(calls.length, 2);
+    assert.ok(calls[1].args.includes('review'));
+    assert.equal(calls[1].input, '{"ready":true,"notify":"NONE"}');
+  }
+});

@@ -55,7 +55,7 @@ export function fakeRunner(routes) {
     const route = routes.find((r) => r.match(file, args));
     if (!route) throw new Error(`fakeRunner: unexpected command: ${file} ${args.join(' ')}`);
     const result = typeof route.result === 'function' ? route.result(file, args, opts) : route.result;
-    return { code: result.code ?? 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    return { code: result.code === undefined ? 0 : result.code, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
   };
   return Object.assign(runner, { calls });
 }
