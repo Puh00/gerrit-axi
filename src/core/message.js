@@ -3,10 +3,10 @@
 /**
  * Posting one change-level message to one change.
  *
- * This module and ready.js are the only modules that spell the remote command
- * they use. That command can also vote, submit, abandon, restore
- * and rebase, which is why every module outside those two is forbidden to name it
- * (test/layering.test.js scans for it) and why this one builds its argv in a
+ * This module and ready.js are the only modules that build the remote command
+ * they use. That command can also vote, submit, abandon, restore and rebase.
+ * The source scan in test/layering.test.js permits only these builders and a
+ * help-text mention, which is why this module builds its argv in a
  * single function with no parameter for a flag: `buildMessageArgs` takes a
  * connection, a change, a patch set and a text, and emits a fixed shape whose
  * only option is `--message`. Nothing a caller passes can become an option,

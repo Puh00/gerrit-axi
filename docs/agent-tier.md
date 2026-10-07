@@ -164,7 +164,7 @@ A document ends with `help[]`, the next steps as complete commands, only where
 the next step is not obvious: after a list (`status`), after a write (`publish`,
 `message`, a `submit` the server did not report as merged), after a `watch`, and
 whenever something was held back. A detail view that answers whole, such as `show`, and a
-confirmation, such as a merged `submit`, carry none, and the key is absent
+confirmation, such as `ready` or a merged `submit`, carry none, and the key is absent
 rather than empty. A failure's `help[]` is the command that fixes or diagnoses it,
 when one exists; it never says "see `--help`".
 
@@ -624,6 +624,7 @@ The write is followed by a query that must confirm the same patch set and revisi
 A mismatch fails with `READY_NOT_CONFIRMED`; a missing change remains `NOT_FOUND`.
 A refusal carries Gerrit's words with `READY_REFUSED`, while an SSH connection or process failure is `SSH_FAILED`.
 These transport errors exit 5 and follow the usual typed stdout error contract.
-Readback failures can occur after the write has taken effect, so inspect the change before retrying.
+A timeout, signal or lost SSH connection can occur after activation has taken effect.
+Inspect the change before retrying after a write transport error or a readback failure.
 The guards and readback detect concurrent patch set updates, but do not provide an atomic lock across the query and write.
 Activation does not approve or submit a change.

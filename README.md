@@ -19,12 +19,8 @@ Only `message.js` and `ready.js` may build the SSH review command, with fixed op
 The binding control remains the label permissions your server grants the account an agent uses.
 
 Use `gerrit-axi publish --squash --wip` or `gerrit-axi publish --stack --topic demo --wip` to publish work in progress.
-The command reads the changes back and requires WIP on every published revision, including when the push reports "no new changes".
 Use `gerrit-axi ready 12345 --patch-set 2` to activate an open change without a new patch set.
-`ready` uses only the SSH `gerrit review --json` route, with no HTTP token needed.
-The REST alternative, `POST /a/changes/<id>/ready` with an HTTP token, is intentionally out of scope and could follow in a separate PR.
-An optional `--revision <sha>` guard checks the full commit ID; both guards can be supplied together.
-An already-active open change succeeds without writing, and closed changes are refused.
+See [Work in progress](docs/agent-tier.md#work-in-progress) for SSH transport, guards and readback rules.
 
 ```console
 $ gerrit status
