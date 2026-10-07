@@ -254,7 +254,10 @@ examples:
 
 usage: gerrit-axi ready <change> [--patch-set <n>] [--revision <sha>]
 
-Exactly one change number is required. Uses SSH, with no HTTP token.
+Exactly one change number is required.
+Uses SSH only: gerrit review --json, with no HTTP token.
+The REST alternative (POST /a/changes/<id>/ready with an HTTP token) is outside
+this command's scope and could follow in a separate PR.
 An already-active open change succeeds without writing. Closed changes are refused.
 
 options:

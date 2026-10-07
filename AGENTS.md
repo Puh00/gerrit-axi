@@ -46,9 +46,9 @@ fails if any of them is broken, which is the intended way to find out.
   taking a connection from anywhere else must call it itself.
 - Nothing can vote.
   The only writes are `gerrit-axi publish` (one push to `refs/for/`, built only by `buildPushArgs` in `src/core/publish.js`), `gerrit-axi submit` (the one POST, in `restSubmit` in `src/core/rest.js`), `gerrit-axi message` (one `gerrit review --message`, built only by `buildMessageArgs` in `src/core/message.js`), and `gerrit-axi ready` (one `gerrit review --json` with fixed ready/notify JSON on stdin, built in `src/core/ready.js`); the human `gerrit` stays read-only.
-  `gerrit review` may be spelled only in `src/core/message.js` and `src/core/ready.js`, with no parameter for arbitrary options or JSON.
+  Only `src/core/message.js` and `src/core/ready.js` may build `gerrit review` argv, with no parameter for arbitrary options or JSON; `src/axi/help.js` may also name the command in prose.
   A REST `/review` or `/votes` path, `set-reviewers`, `set-topic`, and a label option on a push may not appear anywhere.
-  The layering test's whole-source scan exempts those two modules only for spelling the command.
+  The layering test's whole-source scan exempts those two modules for spelling the command and help for naming it in prose.
   That scan reads source text on purpose: a security invariant needs a whole-source claim.
   `test/message.test.js`, `test/ready.test.js`, and `test/vote-ban.test.js` are its runtime complement and pin the writes by running them; keep all of them.
   Those four are the only writes to Gerrit by design: add no other.

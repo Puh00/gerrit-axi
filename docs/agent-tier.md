@@ -605,7 +605,8 @@ Every published revision must be current, open and WIP in the readback, or the c
 A push answered with "no new changes" does not by itself confirm WIP.
 Without `--wip`, publication behavior is unchanged.
 
-`gerrit-axi ready <change>` activates an open work-in-progress change over SSH, without an HTTP token or a new patch set.
+`gerrit-axi ready <change>` activates an open work-in-progress change using only SSH `gerrit review --json`, without an HTTP token or a new patch set.
+The REST alternative, `POST /a/changes/<id>/ready` with an HTTP token, is intentionally out of scope and could follow in a separate PR.
 It sends only `{"ready":true,"notify":"NONE"}` on stdin, never caller-supplied review JSON, labels, or options.
 No email notification is requested.
 An optional `--patch-set <n>` or `--revision <sha>` refuses stale validation with `PATCH_SET_MISMATCH` before writing; both may be supplied.
