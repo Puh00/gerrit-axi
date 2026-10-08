@@ -269,14 +269,15 @@ async function restWipState(target, change, wip) {
   }
   const op = wip ? 'wip' : 'ready';
   const apiPath = `/a/changes/${change}/${op}`;
-  const { status } = await authorizedFetch(target, apiPath, {
+  const { status, body } = await authorizedFetch(target, apiPath, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=UTF-8' },
     body: '{}',
   });
-  if (status === 409) {
-    throw new TransportError(`Gerrit refused to set ${op} state on change ${change} (HTTP 409)`, {
-      code: wip ? 'WIP_REFUSED' : 'READY_REFUSED',
+  if (status === 409 || status === 403) {
+    const said = stripXssiPrefix(body).trim() || `HTTP ${status}`;
+    throw new TransportError(`Gerrit refused to set ${op} state on change ${change}: ${said}`, {
+      code: status === 403 ? 'FORBIDDEN' : wip ? 'WIP_REFUSED' : 'READY_REFUSED',
     });
   }
   assertRestOk(status, apiPath, target.restBase);

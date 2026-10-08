@@ -11,7 +11,7 @@ const CHANGE = { _number: 12345, status: 'NEW', current_revision: REVISION,
   revisions: { [REVISION]: { _number: 2 } } };
 
 async function run(t, op, { before, after, argv = [], status = 200, readStatus = 200,
-  missingToken = false, failure = false, json = true } = {}) {
+  missingToken = false, failure = false, json = true, body = '' } = {}) {
   const wip = op === 'wip';
   before ??= { ...CHANGE, work_in_progress: !wip };
   after ??= { ...CHANGE, ...(wip ? { work_in_progress: true } : {}) };
@@ -25,7 +25,7 @@ async function run(t, op, { before, after, argv = [], status = 200, readStatus =
     return {
       status: init.method === 'POST' ? status : readStatus,
       headers: new Map(),
-      text: async () => init.method === 'POST' ? '' : ")]}'\n" + JSON.stringify(reads++ === 0 ? before : after),
+      text: async () => init.method === 'POST' ? body : ")]}'\n" + JSON.stringify(reads++ === 0 ? before : after),
     };
   };
   const stdout = captureStream();
@@ -117,6 +117,29 @@ for (const op of ['ready', 'wip']) {
     const bad = await run(t, op, { readStatus: 401 });
     assert.equal(bad.record.code, 'UNAUTHORIZED');
     assert.equal(bad.calls.length, 1);
+  });
+
+  test(`${op} REST preserves server refusal details in CLI errors`, async (t) => {
+    for (const status of [403, 409]) {
+      for (const body of ['  state transition denied\n', ")]}'\nstate transition denied\n", '', '  \n']) {
+        for (const json of [true, false]) {
+          const result = await run(t, op, { status, body, json });
+          const expectedCode = status === 403 ? 'FORBIDDEN' : `${op.toUpperCase()}_REFUSED`;
+          const said = body.trim() ? 'state transition denied' : `HTTP ${status}`;
+          const message = `Gerrit refused to set ${op} state on change 12345: ${said}`;
+          assert.equal(result.code, EXIT.transport);
+          assert.deepEqual(result.calls.map((call) => call.method), ['GET', 'POST']);
+          if (json) {
+            assert.equal(result.record.ok, false);
+            assert.equal(result.record.code, expectedCode);
+            assert.equal(result.record.error, message);
+          } else {
+            assert.match(result.record, new RegExp(`^code: ${expectedCode}$`, 'm'));
+            assert.ok(result.record.includes(message));
+          }
+        }
+      }
+    }
   });
 
   test(`${op} refuses injected options and invalid guards before HTTP calls`, async (t) => {
