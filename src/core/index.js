@@ -32,7 +32,7 @@
  *
  *     const { deltas, baseline } = await watchChanges(session, [184458, 184459]);
  *
- * ...and the writes, which are all there are -- nothing here can vote:
+ * ...and examples of writes -- nothing here can vote:
  *
  *     const publication = await publishChanges(session, { shape: 'stack', topic: 'retry' });
  *     const active = await readyChange(session, 184458);

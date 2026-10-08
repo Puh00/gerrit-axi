@@ -80,20 +80,17 @@ Three channels, each necessary:
   `buildMessageArgs` in `src/core/message.js` builds `gerrit review --message <text> <change>,<patchset>`, with no parameter for another option.
   The text travels as one single-quoted word, so it cannot become another option or a shell command.
   `buildReadyArgs` in `src/core/ready.js` builds `gerrit review --json <change>,<patchset>` with a fixed ready/notify object on stdin.
-  Activation checks optional expected patch set and revision guards before writing, then verifies the same patch set and revision are active by readback.
-- **REST** — `https://<host>/a/...` with Basic auth, for inline comments, which
-  SSH cannot reach, and for the one write REST makes: `POST
-  /a/changes/<n>/submit`. Every other request is a GET. Gerrit prefixes every REST
-  JSON body with the XSSI guard line `)]}'`, which is stripped before parsing.
-- **git over SSH** — `gerrit-axi publish` asks the same SSH endpoint for the
-  branch tip with `git ls-remote`, then makes one `git push` of one refspec,
-  `<commit>:refs/for/<branch>`, with an optional `%topic=`. The push is built in
-  one function, `buildPushArgs` in `src/core/publish.js`, which has no parameter
-  for any other push option. Branch and topic names are screened for the
-  characters that would smuggle one in, and a configured `push.pushOption` is
-  cleared, so the server receives only what was built.
+  See [Work in progress](agent-tier.md#work-in-progress) for activation guards and readback.
+- **REST** - `https://<host>/a/...` with Basic auth, for reads and fixed writes.
+  `src/core/rest.js` owns the write allowlist and exposes no general-purpose write method.
+  Gerrit prefixes REST JSON responses with the XSSI guard line `)]}'`.
+  The client strips that line before parsing.
+- **git over SSH** - `gerrit-axi publish` uses `git ls-remote` to read the branch tip.
+  It then makes one `git push` of one refspec to the same SSH endpoint.
+  `buildPushArgs` in `src/core/publish.js` owns the allowed options and injection safeguards.
+  See [Work in progress](agent-tier.md#work-in-progress) for WIP publication semantics.
 
-HTTP 401, 403 and 404 are kept distinct: 401 means the credential is bad or
-expired and is the only one that tells you to re-run `auth login`; 403 means you
-authenticated but may not read that resource; 404 means no such change (or one you
-cannot see).
+HTTP 401, 403 and 404 are kept distinct.
+401 means the credential is bad or expired and is the only one that asks you to re-run `auth login`.
+403 means you authenticated but lack permission for the requested operation.
+404 means no such change, or one you cannot see.

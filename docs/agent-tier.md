@@ -634,6 +634,7 @@ It sends an empty JSON object to `POST /a/changes/<id>/ready` and uses the exist
 It never falls back to SSH, and SSH never falls back to REST.
 Missing or rejected credentials produce the existing typed authentication error with exit 4.
 HTTP 403 and 404 remain `FORBIDDEN` and `NOT_FOUND`; a 409 is `READY_REFUSED`.
+State-write refusals with HTTP 403 or 409 preserve Gerrit's response text.
 
 `gerrit-axi wip <change>` marks an existing open change work in progress through `POST /a/changes/<id>/wip`, without publishing a patch set.
 This command uses REST only and sends an empty JSON object.
