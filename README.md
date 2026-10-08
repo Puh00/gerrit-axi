@@ -11,7 +11,7 @@ records for an agent. They are siblings, not wrappers — see
 
 **It cannot vote.**
 `gerrit`, for a person, is read-only: every operation is a query.
-`gerrit-axi`, for an agent, adds four writes: `publish`, one push to `refs/for/<branch>`; `ready`, activation of a work-in-progress change; `message`, one change-level message with no label; and `submit`, one REST call the server may refuse.
+`gerrit-axi`, for an agent, adds five writes: `publish`, one push to `refs/for/<branch>`; `ready`, activation of a work-in-progress change; `wip`, marking an existing change work in progress; `message`, one change-level message with no label; and `submit`, one REST call the server may refuse.
 It never votes, writes an inline comment, sets reviewers, or abandons.
 Gerrit evaluates its submit rules on the server and refuses a change without the required approvals.
 The tests forbid REST review endpoints and label push options throughout the codebase.
@@ -20,7 +20,9 @@ The binding control remains the label permissions your server grants the account
 
 Use `gerrit-axi publish --squash --wip` or `gerrit-axi publish --stack --topic demo --wip` to publish work in progress.
 Use `gerrit-axi ready 12345 --patch-set 2` to activate an open change without a new patch set.
-See [Work in progress](docs/agent-tier.md#work-in-progress) for SSH transport, guards and readback rules.
+Add `--rest` to `ready` to use HTTP with a stored token instead of SSH.
+Use `gerrit-axi wip 12345 --patch-set 2` to mark an existing change work in progress over REST.
+See [Work in progress](docs/agent-tier.md#work-in-progress) for transport, notifications, guards and readback rules.
 
 ```console
 $ gerrit status

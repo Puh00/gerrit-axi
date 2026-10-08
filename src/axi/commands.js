@@ -12,7 +12,7 @@
  * `watch` is the one operation that waits: it polls the changes named until
  * something happens on one of them, then answers once.
  *
- * The writes are `publish`, `ready`, `submit` and `message`:
+ * The writes are `publish`, `ready`, `wip`, `submit` and `message`:
  * nothing here records a vote, writes an inline comment, or sets reviewers.
  *
  * A document carries `help[]` -- the next steps, as complete commands -- only
@@ -36,7 +36,7 @@ import {
 import { listComments } from '../core/comments.js';
 import { postChangeMessage } from '../core/message.js';
 import { publishChanges } from '../core/publish.js';
-import { readyChange } from '../core/ready.js';
+import { readyChange, wipChange } from '../core/ready.js';
 import { submitChange } from '../core/submit.js';
 import { WATCH_DEFAULT_INTERVAL_SECONDS, WATCH_MIN_INTERVAL_SECONDS, watchChanges } from '../core/watch.js';
 import { encodeBaseline, readSince } from './baseline.js';
@@ -732,9 +732,26 @@ function publishHelp(publication, rows, overrides) {
  * @param {Ctx} ctx
  * @returns {Promise<Record<string, unknown>>}
  */
-export async function opReady({ session, args }) {
+export async function opReady(ctx) {
+  return opWipState(ctx, false);
+}
+
+/** Mark an existing open change work in progress through REST.
+ * @param {Ctx} ctx
+ */
+export async function opWip(ctx) {
+  return opWipState(ctx, true);
+}
+
+/** @param {Ctx} ctx
+ * @param {boolean} wip
+ */
+async function opWipState({ session, args }, wip) {
+  const op = wip ? 'wip' : 'ready';
   const numbers = changeNumbers(args.positional);
-  if (numbers.length !== 1) throw new UsageError('ready takes exactly one change number');
+  if (numbers.length !== 1 || !Number.isSafeInteger(numbers[0]) || numbers[0] <= 0) {
+    throw new UsageError(`${op} takes exactly one positive safe change number`);
+  }
   const patchSet = args.flags['--patch-set'] === undefined ? undefined
     : positiveInt(args.flags['--patch-set'], 0, '--patch-set');
   if (patchSet !== undefined && (!Number.isSafeInteger(patchSet) || patchSet <= 0)) {
@@ -744,13 +761,15 @@ export async function opReady({ session, args }) {
   if (revision !== undefined && (typeof revision !== 'string' || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(revision))) {
     throw new UsageError('--revision must be a full lowercase commit object ID');
   }
-  const result = await readyChange(session, numbers[0], { patchSet, revision });
+  const result = wip
+    ? await wipChange(session, numbers[0], { patchSet, revision })
+    : await readyChange(session, numbers[0], { patchSet, revision, rest: args.flags['--rest'] === true });
   return {
-    ok: true, op: 'ready', change: result.change.number,
+    ok: true, op, change: result.change.number,
     patch_set: result.change.currentPatchSet.number,
     revision: result.change.currentPatchSet.revision,
     wip: result.change.wip, status: result.change.status,
-    already_ready: result.alreadyReady,
+    ...('alreadyWip' in result ? { already_wip: result.alreadyWip } : { already_ready: result.alreadyReady }),
   };
 }
 

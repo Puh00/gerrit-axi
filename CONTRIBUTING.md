@@ -46,14 +46,14 @@ injectable, the real code paths run against them. Covered in particular:
   the push argv pinned exactly, a branch or topic that would smuggle a push option
   refused, a server rejection reported verbatim, and "no new changes" treated as
   already published
-- WIP publication and activation: see `test/publish.test.js` and `test/ready.test.js`
+- WIP publication and activation: see `test/publish.test.js`, `test/ready.test.js`, and `test/wip-rest.test.js`
 - submit as one POST with no query before it, and a refusal carried in the
   server's own words
 - the change message: the argv pinned exactly, a text stuffed with every scoring
   and state flag arriving as one quoted word through a model of Gerrit's own
   tokeniser, the text taken from stdin or a file and never from argv, an empty
   text refused before any round trip, and a refusal carried in the server's words
-- the layering and no-voting invariants documented in [AGENTS.md](AGENTS.md),
+- the layering and no-voting invariants documented in [AGENTS.md](https://github.com/slnkjthien/gerrit-axi/blob/main/AGENTS.md),
   enforced by `test/layering.test.js` and its runtime complements
 
 The one thing the suite cannot check on a machine without them is the

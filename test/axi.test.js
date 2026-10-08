@@ -714,7 +714,8 @@ test('each command\'s --help is that command\'s page alone: its options, argumen
     }
     for (const flag of all) {
       if (!own.includes(flag)) {
-        assert.equal(text.includes(flag), false, `gerrit-axi ${command} --help must not mention ${flag}`);
+        assert.equal(new RegExp(`${flag}(?![a-z-])`).test(text), false,
+          `gerrit-axi ${command} --help must not mention ${flag}`);
       }
     }
     assert.equal(text.includes('commands, and the options each one takes:'), false,

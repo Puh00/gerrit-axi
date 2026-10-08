@@ -33,6 +33,8 @@ export const COMMAND_TEMPLATES = [
   'gerrit-axi auth status',
   'gerrit-axi publish --stack --topic <t>',
   'gerrit-axi publish --squash',
+  'gerrit-axi ready <change>',
+  'gerrit-axi wip <change>',
   'gerrit-axi submit <change>',
   'gerrit-axi message <change>',
   'gerrit-axi watch <change>...',

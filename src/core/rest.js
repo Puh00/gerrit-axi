@@ -18,7 +18,7 @@
  * Credentials travel in request headers of an in-process HTTP client. We never
  * shell out to curl, so they never touch a command line.
  *
- * Every request is a GET except one: `restSubmit`. There is no general-purpose
+ * Writes are limited to `restSubmit`, `restReady`, and `restWip`. There is no general-purpose
  * write here, so no other endpoint -- the review endpoint that records votes
  * above all -- can be reached by passing it a path.
  */
@@ -184,7 +184,7 @@ export function assertRestOk(status, apiPath, restBase = '') {
 }
 
 /**
- * Ask the server to submit a change -- the only write this client makes.
+ * Ask the server to submit a change.
  *
  * Whether the change may be submitted is not decided here. Gerrit evaluates its
  * submit rules on the server at the moment of the request and refuses, with HTTP
@@ -240,4 +240,45 @@ export async function verifyToken(target) {
     email: account.email ?? null,
     username: account.username ?? null,
   };
+}
+
+/** Activate an existing change. No caller-supplied body or endpoint.
+ * @param {RestTarget} target
+ * @param {number} change
+ */
+export function restReady(target, change) {
+  return restWipState(target, change, false);
+}
+
+/** Mark an existing change work in progress. No caller-supplied body or endpoint.
+ * @param {RestTarget} target
+ * @param {number} change
+ */
+export function restWip(target, change) {
+  return restWipState(target, change, true);
+}
+
+/**
+ * @param {RestTarget} target
+ * @param {number} change
+ * @param {boolean} wip
+ */
+async function restWipState(target, change, wip) {
+  if (!Number.isSafeInteger(change) || change <= 0) {
+    throw new TransportError('state changes need a positive change number', { code: 'BAD_RESPONSE' });
+  }
+  const op = wip ? 'wip' : 'ready';
+  const apiPath = `/a/changes/${change}/${op}`;
+  const { status } = await authorizedFetch(target, apiPath, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+    body: '{}',
+  });
+  if (status === 409) {
+    throw new TransportError(`Gerrit refused to set ${op} state on change ${change} (HTTP 409)`, {
+      code: wip ? 'WIP_REFUSED' : 'READY_REFUSED',
+    });
+  }
+  assertRestOk(status, apiPath, target.restBase);
+  // These endpoints return an empty success body. State is verified by readback.
 }

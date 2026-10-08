@@ -32,7 +32,7 @@
  *
  *     const { deltas, baseline } = await watchChanges(session, [184458, 184459]);
  *
- * ...and the four writes, which are all there are -- nothing here can vote:
+ * ...and the writes, which are all there are -- nothing here can vote:
  *
  *     const publication = await publishChanges(session, { shape: 'stack', topic: 'retry' });
  *     const active = await readyChange(session, 184458);
@@ -108,6 +108,8 @@ export {
   restGetJson,
   restGetRaw,
   restSubmit,
+  restReady,
+  restWip,
   stripXssiPrefix,
   verifyToken,
 } from './rest.js';
@@ -153,4 +155,4 @@ export { AuthError, ConfigError, GerritError, TransportError } from './errors.js
 
 export { commandExists, runCommand } from './exec.js';
 
-export { buildReadyArgs, readyChange } from './ready.js';
+export { buildReadyArgs, readyChange, wipChange } from './ready.js';

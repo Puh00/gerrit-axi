@@ -10,7 +10,7 @@
  * for the global options rather than repeating their descriptions.
  */
 
-export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review state as records, watch, publish, ready, message, and submit
+export const USAGE = `gerrit-axi - Gerrit for agents: your dashboard, review state as records, watch, publish, ready, wip, message, and submit
 
 usage: gerrit-axi [<command>] [options]
        gerrit-axi <command> --help     that command's options and examples
@@ -70,6 +70,10 @@ commands, and the options each one takes:
       --branch <b>            the branch to propose against (default: the
                               server's default branch)
   ready <change>             activate a work-in-progress change over SSH
+      --rest                 use REST instead, with a stored HTTP token
+      --patch-set <n>         refuse if the current patch set differs
+      --revision <sha>        refuse if the current revision differs
+  wip <change>               mark an existing change work in progress via REST
       --patch-set <n>         refuse if the current patch set differs
       --revision <sha>        refuse if the current revision differs
   submit <change>             ask the server to submit one change; a refusal is
@@ -252,21 +256,23 @@ examples:
   gerrit-axi auth status --json`,
   ready: `gerrit-axi ready - activate a work-in-progress change without a new patch set
 
-usage: gerrit-axi ready <change> [--patch-set <n>] [--revision <sha>]
+usage: gerrit-axi ready <change> [--rest] [--patch-set <n>] [--revision <sha>]
 
 Exactly one change number is required.
-Uses SSH only: gerrit review --json, with no HTTP token.
-The REST alternative (POST /a/changes/<id>/ready with an HTTP token) is outside
-this command's scope and could follow in a separate PR.
+Uses SSH by default: gerrit review --json, with no HTTP token.
+--rest selects HTTP for all reads and the write, using a stored token.
+Neither route falls back to the other.
 An already-active open change succeeds without writing. Closed changes are refused.
 
 options:
+  --rest                 select REST with a stored HTTP token
   --patch-set <n>         expected current patch set number
   --revision <sha>        expected full lowercase commit object ID
 
 Guards are checked before writing. Readback must confirm an active change on the
 same patch set and revision. These checks are not an atomic concurrency lock.
-No votes or email notifications are requested.
+No votes are requested. SSH suppresses email; REST uses Gerrit's notification
+behavior for its dedicated ready endpoint.
 
 global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
   --rest-base <u> (see gerrit-axi --help)
@@ -274,6 +280,28 @@ global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
 examples:
   gerrit-axi ready 12345 --patch-set 2
   gerrit-axi ready 12345 --json`,
+  wip: `gerrit-axi wip - mark an existing change work in progress without a new patch set
+
+usage: gerrit-axi wip <change> [--patch-set <n>] [--revision <sha>]
+
+Exactly one change number is required. Uses REST with a stored HTTP token for
+all reads and the write, with no SSH fallback. No votes or review text are sent.
+An already-WIP open change succeeds without writing. Closed changes are refused.
+Gerrit controls notifications and attention-set updates for this endpoint.
+
+options:
+  --patch-set <n>         expected current patch set number
+  --revision <sha>        expected full lowercase commit object ID
+
+Guards are checked before writing. Readback must confirm WIP on the same open
+patch set and revision. These checks are not an atomic concurrency lock.
+
+global options: --json, --host <h>, --user <u>, --port <p>, --project <p>,
+  --rest-base <u> (see gerrit-axi --help)
+
+examples:
+  gerrit-axi wip 12345 --patch-set 2 --json
+  gerrit-axi wip 12345 --json`,
   publish: `gerrit-axi publish - push the commits on HEAD for review, as changes
 
 usage: gerrit-axi publish --stack --topic <t> [--branch <b>] [--wip]

@@ -15,6 +15,10 @@ here is its GitHub Release notes, above the list of pull requests it merged.
 - `gerrit-axi ready <change>` activates an open work-in-progress change over SSH without a new patch set or an HTTP token.
   Optional `--patch-set` and `--revision` guards refuse stale validation before writing, and readback verifies the same patch set and revision are active.
   An already-active change succeeds without writing; closed changes are refused.
+  `--rest` selects the dedicated HTTP endpoint and REST reads with a stored token, without SSH fallback.
+  REST uses Gerrit's notification behavior; SSH requests no email.
+- `gerrit-axi wip <change>` marks an existing change work in progress over REST without a new patch set.
+  It accepts the same guards and verifies the resulting state by readback; an already-WIP open change is a no-op.
 
 ## [0.5.0]
 

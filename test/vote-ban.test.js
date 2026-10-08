@@ -125,6 +125,8 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
     { argv: ['publish', '--stack', '--topic', 'stack-of-three'], log: stackLog, head: c },
     { argv: ['publish', '--squash'], log: squashLog, head: b },
     { argv: ['ready', '200101'], log: '', head: c },
+    { argv: ['ready', '200101', '--rest'], log: '', head: c },
+    { argv: ['wip', '200101'], log: '', head: c },
     { argv: ['submit', '200101'], log: '', head: c },
     { argv: ['submit', '200102'], log: '', head: c },
     { argv: ['message', '200101'], log: '', head: c, stdin: hostile },
@@ -143,14 +145,27 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
 
   /** @type {Array<{op: string, file: string, args: string[], input?: string}>} */
   const processes = [];
-  /** @type {Array<{op: string, method: string, path: string}>} */
+  /** @type {Array<{op: string, method: string, path: string, body?: string}>} */
   const requests = [];
   const restored = Session.prototype.token;
   Session.prototype.token = async () => ({ token: 'placeholder-not-a-real-token', backend: 'file', location: null });
   try {
     for (const { argv, log, head, stdin } of operations) {
       const runner = repo(log, head, argv[0] === 'ready');
-      const fetchImpl = fakeFetch(fetchRoutes);
+      const restState = argv[0] === 'wip' || argv.includes('--rest');
+      let reads = 0;
+      const fetchImpl = restState ? Object.assign(async (url, init) => {
+        const one = fakeFetch([
+          { path: `/a/changes/200101/${argv[0]}`, body: '' },
+          { path: '/a/changes/200101?o=CURRENT_REVISION', body: ")]}'\n" + JSON.stringify({
+            _number: 200101, status: 'NEW', current_revision: c, revisions: { [c]: { _number: 4 } },
+            work_in_progress: reads++ === 0 ? argv[0] === 'ready' : argv[0] === 'wip',
+          }) },
+        ]);
+        const response = await one(url, init);
+        fetchImpl.calls.push(...one.calls);
+        return response;
+      }, { calls: [] }) : fakeFetch(fetchRoutes);
       const stdout = captureStream();
       const code = await main(argv, {
         cwd: '/some/checkout',
@@ -165,7 +180,7 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
       assert.equal(code, EXIT.ok, `${op} must run to completion for its calls to count:\n${stdout.text}`);
       for (const call of runner.calls) processes.push({ op, file: call.file, args: call.args, input: call.input });
       for (const call of fetchImpl.calls) {
-        requests.push({ op, method: call.method ?? 'GET', path: new URL(call.url).pathname });
+        requests.push({ op, method: call.method ?? 'GET', path: new URL(call.url).pathname, body: call.body });
       }
     }
   } finally {
@@ -178,6 +193,11 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   // The already-merged submit reads the change back, and that read is a GET.
   assert.deepEqual(requests.filter((r) => r.op === 'submit 200102').map((r) => `${r.method} ${r.path}`),
     ['POST /a/changes/200102/submit', 'GET /a/changes/200102']);
+  for (const op of ['ready 200101 --rest', 'wip 200101']) {
+    const calls = requests.filter((r) => r.op === op);
+    assert.deepEqual(calls.map((r) => r.method), ['GET', 'POST', 'GET']);
+    assert.equal(calls[1].path, `/a/changes/200101/${op.split(' ')[0]}`);
+  }
   const posts = processes.filter((p) => p.file === 'ssh' && p.args.includes('review'));
   assert.equal(posts.length, 2, 'the message and activation each write once');
   const activation = posts.find((p) => p.op === 'ready 200101');
@@ -195,12 +215,14 @@ test('no operation the agent tier drives sends a vote, over ssh, git or HTTP', a
   assert.equal(post.args.indexOf('review'), at + 1, 'review appears once, as the subcommand');
   assert.equal(post.args.lastIndexOf('review'), at + 1, 'review appears once, as the subcommand');
 
-  for (const { op, method, path } of requests) {
+  for (const { op, method, path, body } of requests) {
     assert.doesNotMatch(path, /\/(?:review|votes|reviewers)(?:\/|$)/,
       `${op} requested ${method} ${path}. ${WHY}`);
     if (method !== 'GET') {
-      assert.match(path, /^\/a\/changes\/\d+\/submit$/,
-        `${op} made a ${method} to ${path}; the only write over HTTP is submit. ${WHY}`);
+      assert.equal(method, 'POST');
+      assert.match(path, /^\/a\/changes\/\d+\/(?:submit|ready|wip)$/,
+        `${op} made an unexpected ${method} to ${path}. ${WHY}`);
+      assert.equal(body, '{}', 'REST writes carry no caller-supplied fields');
     }
   }
 

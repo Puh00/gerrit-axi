@@ -12,7 +12,7 @@ complete commands.
 
 The binary has to be installed first (see the project README's Install
 section); it is not on npm, so `npx` will not find it. It talks to Gerrit over ssh, so the
-user's SSH key must be registered there. REST calls (inline comments, submit)
+user's SSH key must be registered there. REST calls (inline comments, submit, ready --rest, wip)
 also need a stored token: if a record says the user is not signed in, ask them
 to run `gerrit auth login` themselves. Never handle a token yourself.
 
@@ -41,7 +41,8 @@ gerrit-axi auth status               whether the stored credential still works
 gerrit-axi publish --stack --topic <t>   each commit on HEAD becomes a change
 gerrit-axi publish --squash          the commits on HEAD become one change
     --wip                          publish WIP and verify state by readback
-gerrit-axi ready <change>            activate WIP without a new patch set
+gerrit-axi ready <change> [--rest]   activate WIP without a new patch set
+gerrit-axi wip <change>              mark an existing change WIP over REST
     --patch-set <n>                 refuse a different current patch set
     --revision <sha>                refuse a different current revision
 gerrit-axi submit <change>           ask the server to submit one change
@@ -60,6 +61,10 @@ Run `gerrit-axi --help` for every option.
 - `ready` activates an open work-in-progress change over SSH without an HTTP token.
   Use `--patch-set` or `--revision` to guard previously validated work; a mismatch refuses the write.
   Readback must confirm the same revision is active, and an already-active change succeeds without writing.
+  `--rest` selects REST for all reads and the write, requires a stored token, and uses Gerrit's notification behavior instead of SSH's suppression.
+  There is no transport fallback.
+- `wip` marks an existing open change work in progress over REST without a new patch set.
+  It accepts the same guards as `ready`, verifies WIP by readback, and treats an already-WIP change as a no-op.
 - `submit` only a change the server marks submittable; a refusal comes back in
   the server's own words. A change that has already merged is a success with
   `already_merged: true`.
